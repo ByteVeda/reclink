@@ -1,0 +1,63 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "reclink"
+version = "0.1.0"
+description = "Blazing-fast fuzzy matching and record linkage library"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "numpy>=1.21",
+]
+
+[project.optional-dependencies]
+pandas = ["pandas>=1.5"]
+polars = ["polars>=0.20"]
+dev = [
+    "pytest>=7.0",
+    "pandas>=1.5",
+    "polars>=0.20",
+    "ruff>=0.9",
+    "mypy>=1.13",
+]
+
+[tool.maturin]
+python-source = "py_src"
+module-name = "reclink._core"
+features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["reclink"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "reclink._core"
+ignore_missing_imports = true

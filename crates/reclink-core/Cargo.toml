@@ -1,0 +1,24 @@
+[package]
+name = "reclink-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Rust library for fuzzy string matching and record linkage"
+license = "MIT"
+
+[dependencies]
+rayon = "1.11"
+unicode-normalization = "0.1"
+ahash = "0.8"
+thiserror = "2"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "metrics"
+harness = false

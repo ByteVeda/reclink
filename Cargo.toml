@@ -1,0 +1,21 @@
+[workspace]
+members = ["crates/reclink-core"]
+resolver = "2"
+
+[package]
+name = "reclink"
+version = "0.1.0"
+edition = "2021"
+description = "Blazing-fast fuzzy matching and record linkage library"
+license = "MIT"
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+reclink-core = { path = "crates/reclink-core" }
+pyo3 = { version = "0.24", features = ["extension-module"] }
+numpy = "0.24"
+rayon = "1.11"
+ahash = "0.8"
