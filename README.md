@@ -23,7 +23,7 @@ pip install reclink
 ### Build from source
 
 ```bash
-git clone https://github.com/your-org/reclink.git
+git clone https://github.com/pratyush618/reclink.git
 cd reclink
 uv sync --extra dev
 maturin develop --release
