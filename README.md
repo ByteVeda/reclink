@@ -27,6 +27,7 @@ Blazing-fast fuzzy matching and record linkage library powered by Rust.
 - **Pipeline profiling** — per-stage timing for performance tuning
 - **Built-in benchmarking** — benchmark metrics and pipelines on your data
 - **Evaluation & export** — precision/recall/F1, ROC/AUC, CSV/JSON export
+- **Extensible plugin system** — register custom metrics, blockers, comparators, classifiers, and preprocessors in Python
 
 ## Installation
 
@@ -579,6 +580,7 @@ Blocking reduces the number of candidate pairs by grouping records that are like
 | `block_trie(field, min_prefix_len=2, max_frequency=100)` | Trie-based prefix grouping with frequency pruning |
 | `block_numeric(field, bucket_size=5.0)` | Numeric bucket ranges |
 | `block_date(field, resolution="year")` | Date truncation (year/month/day) |
+| `block_custom(name)` | Custom registered blocker (see [Custom Plugins](#custom-plugins)) |
 
 ### Comparators
 
@@ -591,6 +593,7 @@ Compare field values to produce similarity scores:
 | `compare_numeric(field, max_diff=10.0)` | Numeric distance normalized by max_diff |
 | `compare_date(field)` | Date similarity |
 | `compare_phonetic(field, algorithm="soundex")` | Phonetic match (1.0 if same encoding, else 0.0) |
+| `compare_custom(field, name)` | Custom registered comparator (see [Custom Plugins](#custom-plugins)) |
 
 ### Classifiers
 
@@ -604,6 +607,7 @@ Decide which candidate pairs are matches:
 | `classify_weighted_bands(weights, upper, lower)` | Three-band with weighted scores |
 | `classify_fellegi_sunter(m_probs, u_probs, upper, lower)` | Probabilistic model with known parameters |
 | `classify_fellegi_sunter_auto(max_iterations=100, ...)` | Fellegi-Sunter with EM-estimated parameters |
+| `classify_custom(name)` | Custom registered classifier (see [Custom Plugins](#custom-plugins)) |
 
 You can also estimate Fellegi-Sunter parameters independently via `estimate_fellegi_sunter(vectors)`, which returns an `EmResult` with `m_probs`, `u_probs`, `p_match`, `iterations`, and `converged`.
 
@@ -847,6 +851,138 @@ unregister_metric("my_metric")  # True
 ```
 
 > **Note:** Custom metrics acquire the GIL on each call, so batch operations with custom metrics are not parallelized. For hot paths, prefer built-in metrics.
+
+## Custom Plugins
+
+Extend the pipeline with custom blockers, comparators, classifiers, and preprocessors written in Python.
+
+### Custom Blockers
+
+Register a blocker object with `block_dedup` and `block_link` methods:
+
+```python
+from reclink import register_blocker, unregister_blocker, list_custom_blockers
+
+class FirstLetterBlocker:
+    def block_dedup(self, records: list[dict[str, str]]) -> list[tuple[int, int]]:
+        """Return candidate pairs from a single dataset."""
+        pairs = []
+        for i in range(len(records)):
+            for j in range(i + 1, len(records)):
+                if records[i].get("name", "")[:1] == records[j].get("name", "")[:1]:
+                    pairs.append((i, j))
+        return pairs
+
+    def block_link(
+        self,
+        left: list[dict[str, str]],
+        right: list[dict[str, str]],
+    ) -> list[tuple[int, int]]:
+        """Return candidate pairs across two datasets."""
+        pairs = []
+        for i, l in enumerate(left):
+            for j, r in enumerate(right):
+                if l.get("name", "")[:1] == r.get("name", "")[:1]:
+                    pairs.append((i, j))
+        return pairs
+
+register_blocker("first_letter", FirstLetterBlocker())
+
+# Use in pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .block_custom("first_letter")
+    .compare_string("name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+
+# Management
+list_custom_blockers()            # ["first_letter"]
+unregister_blocker("first_letter")  # True
+```
+
+### Custom Comparators
+
+Register a function `(str, str) -> float`:
+
+```python
+from reclink import register_comparator, unregister_comparator, list_custom_comparators
+
+def initials_match(a: str, b: str) -> float:
+    """Score 1.0 if first letters match, else 0.0."""
+    return 1.0 if a[:1].lower() == b[:1].lower() else 0.0
+
+register_comparator("initials", initials_match)
+
+# Use in pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .compare_custom("name", "initials")
+    .classify_threshold(0.5)
+    .build()
+)
+
+# Management
+list_custom_comparators()           # ["initials"]
+unregister_comparator("initials")   # True
+```
+
+### Custom Classifiers
+
+Register a function `(list[float]) -> tuple[float, str]` that receives the per-field score vector and returns `(aggregate_score, match_class)`:
+
+```python
+from reclink import register_classifier, unregister_classifier, list_custom_classifiers
+
+def banded(scores: list[float]) -> tuple[float, str]:
+    avg = sum(scores) / len(scores) if scores else 0.0
+    if avg >= 0.9:
+        return (avg, "match")
+    if avg >= 0.5:
+        return (avg, "possible_match")
+    return (avg, "non_match")
+
+register_classifier("banded", banded)
+
+# Use in pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .compare_string("name", metric="jaro_winkler")
+    .classify_custom("banded")
+    .build()
+)
+
+# Management
+list_custom_classifiers()           # ["banded"]
+unregister_classifier("banded")     # True
+```
+
+### Custom Preprocessors
+
+Register a function `(str) -> str` and reference it in the pipeline with the `"custom:<name>"` prefix:
+
+```python
+import re
+from reclink import register_preprocessor, unregister_preprocessor, list_custom_preprocessors
+
+register_preprocessor("strip_numbers", lambda s: re.sub(r"\d+", "", s))
+
+# Use in pipeline — mix with built-in operations
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("name", ["fold_case", "custom:strip_numbers"])
+    .compare_string("name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+
+# Management
+list_custom_preprocessors()             # ["strip_numbers"]
+unregister_preprocessor("strip_numbers")  # True
+```
+
+> **Note:** Custom plugins acquire the GIL on each call, so pipeline stages using custom plugins are not parallelized by Rayon. For hot paths, prefer built-in strategies.
 
 ## Language Detection
 
