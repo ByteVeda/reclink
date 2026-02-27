@@ -399,6 +399,41 @@ class PipelineBuilder:
         self._inner.classify_weighted_bands(list(weights), upper, lower)
         return self
 
+    def block_custom(self, name: str) -> PipelineBuilder:
+        """Block using a custom registered blocker.
+
+        Parameters
+        ----------
+        name : str
+            Name of the registered custom blocker.
+        """
+        self._inner.block_custom(name)
+        return self
+
+    def compare_custom(self, field: str, name: str) -> PipelineBuilder:
+        """Compare a field using a custom registered comparator.
+
+        Parameters
+        ----------
+        field : str
+            Field name to compare.
+        name : str
+            Name of the registered custom comparator.
+        """
+        self._inner.compare_custom(field, name)
+        return self
+
+    def classify_custom(self, name: str) -> PipelineBuilder:
+        """Classify using a custom registered classifier.
+
+        Parameters
+        ----------
+        name : str
+            Name of the registered custom classifier.
+        """
+        self._inner.classify_custom(name)
+        return self
+
     def compare_phonetic(
         self, field: str, algorithm: PhoneticAlgorithm = "soundex"
     ) -> PipelineBuilder:

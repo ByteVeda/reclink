@@ -1,5 +1,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use reclink_core::blocking;
+use reclink_core::compare;
 use reclink_core::metrics;
 use reclink_core::preprocess;
 
@@ -116,6 +118,10 @@ impl PyPipeline {
                     *min_prefix_len,
                     *max_frequency,
                 )),
+                PyBlockerConfig::Custom { name } => Box::new(
+                    blocking::custom_blocker_from_name(name)
+                        .map_err(|e| PyValueError::new_err(e.to_string()))?,
+                ),
             };
             blockers.push(blocker);
         }
@@ -146,6 +152,10 @@ impl PyPipeline {
                     let algo = parse_phonetic_algorithm(algorithm)?;
                     Box::new(PhoneticComparator::new(field.clone(), algo))
                 }
+                PyComparatorConfig::Custom { field, name } => Box::new(
+                    compare::custom_comparator_from_name(field, name)
+                        .map_err(|e| PyValueError::new_err(e.to_string()))?,
+                ),
             };
             comparators.push(comparator);
         }
@@ -200,6 +210,10 @@ impl PyPipeline {
                     // Handled in dedup/link methods directly
                     unreachable!("FellegiSunterAuto should be handled before build_pipeline")
                 }
+                PyClassifierConfig::Custom { name } => Box::new(
+                    reclink_core::classify::custom_classifier_from_name(name)
+                        .map_err(|e| PyValueError::new_err(e.to_string()))?,
+                ),
             };
             builder = builder.set_classifier(classifier);
         }

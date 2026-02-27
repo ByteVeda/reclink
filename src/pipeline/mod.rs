@@ -259,6 +259,19 @@ impl PyPipeline {
         });
     }
 
+    fn block_custom(&mut self, name: String) {
+        self.blockers.push(PyBlockerConfig::Custom { name });
+    }
+
+    fn compare_custom(&mut self, field: String, name: String) {
+        self.comparators
+            .push(PyComparatorConfig::Custom { field, name });
+    }
+
+    fn classify_custom(&mut self, name: String) {
+        self.classifier = Some(PyClassifierConfig::Custom { name });
+    }
+
     fn classify_threshold(&mut self, threshold: f64) {
         self.classifier = Some(PyClassifierConfig::Threshold { threshold });
     }

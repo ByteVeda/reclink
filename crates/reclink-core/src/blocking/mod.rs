@@ -4,6 +4,7 @@
 //! that are likely to match into blocks, then only comparing within blocks.
 
 mod canopy;
+pub mod custom;
 mod date;
 mod exact;
 mod lsh;
@@ -14,6 +15,7 @@ mod sorted_neighborhood;
 mod trie;
 
 pub use canopy::CanopyClustering;
+pub use custom::*;
 pub use date::{DateBlocking, DateResolution};
 pub use exact::ExactBlocking;
 pub use lsh::LshBlocking;

@@ -3,6 +3,7 @@
 //! Provides Unicode normalization, case folding, whitespace normalization,
 //! punctuation stripping, tokenization, and name standardization.
 
+pub mod custom;
 mod normalize;
 pub mod stop_words;
 mod tokenize;
@@ -61,6 +62,11 @@ pub enum PreprocessOp {
     },
     /// Transliterate from a non-Latin script to Latin characters.
     Transliterate(transliterate::Script),
+    /// User-defined custom preprocessing operation.
+    Custom {
+        /// Name of the registered custom preprocessor.
+        name: String,
+    },
 }
 
 /// Applies a sequence of preprocessing operations to a string.
@@ -95,6 +101,7 @@ pub fn apply_ops(s: &str, ops: &[PreprocessOp]) -> Result<String> {
             PreprocessOp::NormalizeUrl => normalize_url(&result),
             PreprocessOp::SynonymExpand { table } => expand_abbreviations(&result, table),
             PreprocessOp::Transliterate(script) => transliterate::transliterate(&result, *script),
+            PreprocessOp::Custom { name } => custom::apply_custom_preprocessor(name, &result)?,
         };
     }
     Ok(result)

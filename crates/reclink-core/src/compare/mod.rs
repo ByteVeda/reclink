@@ -1,11 +1,13 @@
 //! Field comparators for computing similarity between record fields.
 
+pub mod custom;
 mod date;
 mod exact;
 mod numeric;
 mod phonetic;
 mod string;
 
+pub use custom::*;
 pub use date::DateComparator;
 pub use exact::ExactComparator;
 pub use numeric::NumericComparator;

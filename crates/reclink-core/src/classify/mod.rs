@@ -1,10 +1,12 @@
 //! Classifiers for turning comparison vectors into match/non-match decisions.
 
+pub mod custom;
 mod em;
 mod fellegi_sunter;
 mod threshold;
 mod weighted;
 
+pub use custom::*;
 pub use em::*;
 pub use fellegi_sunter::FellegiSunterClassifier;
 pub use threshold::{ThresholdBandsClassifier, ThresholdClassifier};

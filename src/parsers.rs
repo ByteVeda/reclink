@@ -38,6 +38,17 @@ pub fn parse_preprocess_ops(names: &[String]) -> PyResult<Vec<preprocess::Prepro
             "transliterate_greek" => Ok(preprocess::PreprocessOp::Transliterate(
                 preprocess::transliterate::Script::Greek,
             )),
+            other if other.starts_with("custom:") => {
+                let custom_name = &other["custom:".len()..];
+                if custom_name.is_empty() {
+                    return Err(PyValueError::new_err(
+                        "custom preprocessor format: 'custom:<name>'",
+                    ));
+                }
+                Ok(preprocess::PreprocessOp::Custom {
+                    name: custom_name.to_string(),
+                })
+            }
             other if other.starts_with("synonym_expand:") => {
                 let json = &other["synonym_expand:".len()..];
                 let map: std::collections::HashMap<String, String> = serde_json::from_str(json)
