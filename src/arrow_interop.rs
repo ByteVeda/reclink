@@ -21,15 +21,21 @@ use reclink_core::phonetic::{self as phonetic_mod, PhoneticEncoder};
 /// constructing a numpy array.
 #[pyfunction]
 #[pyo3(signature = (a, b, scorer="jaro_winkler"))]
-pub fn cdist_arrow(a: Vec<String>, b: Vec<String>, scorer: &str) -> PyResult<Vec<f64>> {
+pub fn cdist_arrow(
+    py: Python<'_>,
+    a: Vec<String>,
+    b: Vec<String>,
+    scorer: &str,
+) -> PyResult<Vec<f64>> {
     let metric =
         metrics::metric_from_name(scorer).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
     let metric_ref = &metric;
-    let result: Vec<f64> = a
-        .par_iter()
-        .flat_map_iter(|s_a| b.iter().map(move |s_b| metric_ref.similarity(s_a, s_b)))
-        .collect();
+    let result: Vec<f64> = py.allow_threads(|| {
+        a.par_iter()
+            .flat_map_iter(|s_a| b.iter().map(move |s_b| metric_ref.similarity(s_a, s_b)))
+            .collect()
+    });
 
     Ok(result)
 }
@@ -102,7 +108,12 @@ pub fn match_batch_arrow(
 /// Both arrays must have the same length. Returns a list of similarity scores.
 #[pyfunction]
 #[pyo3(signature = (a, b, scorer="jaro_winkler"))]
-pub fn pairwise_similarity(a: Vec<String>, b: Vec<String>, scorer: &str) -> PyResult<Vec<f64>> {
+pub fn pairwise_similarity(
+    py: Python<'_>,
+    a: Vec<String>,
+    b: Vec<String>,
+    scorer: &str,
+) -> PyResult<Vec<f64>> {
     if a.len() != b.len() {
         return Err(PyValueError::new_err(format!(
             "arrays must have equal length: {} != {}",
@@ -114,11 +125,12 @@ pub fn pairwise_similarity(a: Vec<String>, b: Vec<String>, scorer: &str) -> PyRe
     let metric =
         metrics::metric_from_name(scorer).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-    let result: Vec<f64> = a
-        .par_iter()
-        .zip(b.par_iter())
-        .map(|(s_a, s_b)| metric.similarity(s_a, s_b))
-        .collect();
+    let result: Vec<f64> = py.allow_threads(|| {
+        a.par_iter()
+            .zip(b.par_iter())
+            .map(|(s_a, s_b)| metric.similarity(s_a, s_b))
+            .collect()
+    });
 
     Ok(result)
 }
@@ -128,7 +140,11 @@ pub fn pairwise_similarity(a: Vec<String>, b: Vec<String>, scorer: &str) -> PyRe
 /// Returns a list of phonetic codes.
 #[pyfunction]
 #[pyo3(signature = (strings, algorithm="soundex"))]
-pub fn phonetic_batch_arrow(strings: Vec<String>, algorithm: &str) -> PyResult<Vec<String>> {
+pub fn phonetic_batch_arrow(
+    py: Python<'_>,
+    strings: Vec<String>,
+    algorithm: &str,
+) -> PyResult<Vec<String>> {
     let encoder: Box<dyn PhoneticEncoder + Send + Sync> = match algorithm {
         "soundex" => Box::new(phonetic_mod::Soundex),
         "metaphone" => Box::new(phonetic_mod::Metaphone),
@@ -143,7 +159,9 @@ pub fn phonetic_batch_arrow(strings: Vec<String>, algorithm: &str) -> PyResult<V
         }
     };
 
-    let result: Vec<String> = strings.par_iter().map(|s| encoder.encode(s)).collect();
+    let result: Vec<String> = py.allow_threads(|| {
+        strings.par_iter().map(|s| encoder.encode(s)).collect()
+    });
 
     Ok(result)
 }

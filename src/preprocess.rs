@@ -177,33 +177,82 @@ fn transliterate_greek(s: &str) -> String {
 
 /// Apply a chain of preprocessing operations to a batch of strings in parallel.
 #[pyfunction]
-fn preprocess_batch(strings: Vec<String>, operations: Vec<String>) -> PyResult<Vec<String>> {
+fn preprocess_batch(
+    py: Python<'_>,
+    strings: Vec<String>,
+    operations: Vec<String>,
+) -> PyResult<Vec<String>> {
     let ops = crate::parsers::parse_preprocess_ops(&operations)?;
-    preprocess::preprocess_batch(&strings, &ops).map_err(|e| PyValueError::new_err(e.to_string()))
+    py.allow_threads(|| {
+        preprocess::preprocess_batch(&strings, &ops)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    })
 }
 
 /// Generate character n-grams for a batch of strings in parallel.
 #[pyfunction]
 #[pyo3(signature = (strings, n=2))]
-fn ngram_tokenize_batch(strings: Vec<String>, n: usize) -> Vec<Vec<String>> {
-    strings
-        .par_iter()
-        .map(|s| preprocess::ngram_tokenize(s, n))
-        .collect()
+fn ngram_tokenize_batch(py: Python<'_>, strings: Vec<String>, n: usize) -> Vec<Vec<String>> {
+    py.allow_threads(|| {
+        strings
+            .par_iter()
+            .map(|s| preprocess::ngram_tokenize(s, n))
+            .collect()
+    })
 }
 
 /// Split each string on whitespace for a batch of strings in parallel.
 #[pyfunction]
-fn whitespace_tokenize_batch(strings: Vec<String>) -> Vec<Vec<String>> {
-    strings
-        .par_iter()
-        .map(|s| {
-            preprocess::whitespace_tokenize(s)
-                .into_iter()
-                .map(String::from)
-                .collect()
-        })
-        .collect()
+fn whitespace_tokenize_batch(py: Python<'_>, strings: Vec<String>) -> Vec<Vec<String>> {
+    py.allow_threads(|| {
+        strings
+            .par_iter()
+            .map(|s| {
+                preprocess::whitespace_tokenize(s)
+                    .into_iter()
+                    .map(String::from)
+                    .collect()
+            })
+            .collect()
+    })
+}
+
+/// Tokenize a string into individual characters (whitespace removed).
+///
+/// Useful for CJK text where whitespace delimiters are absent.
+#[pyfunction]
+fn character_tokenize(s: &str) -> Vec<String> {
+    preprocess::character_tokenize(s)
+}
+
+/// Smart tokenizer that auto-detects CJK vs Latin runs.
+///
+/// CJK characters become individual tokens; Latin runs are whitespace-split.
+#[pyfunction]
+fn smart_tokenize(s: &str) -> Vec<String> {
+    preprocess::smart_tokenize(s)
+}
+
+/// Tokenize each string into individual characters in parallel.
+#[pyfunction]
+fn character_tokenize_batch(py: Python<'_>, strings: Vec<String>) -> Vec<Vec<String>> {
+    py.allow_threads(|| {
+        strings
+            .par_iter()
+            .map(|s| preprocess::character_tokenize(s))
+            .collect()
+    })
+}
+
+/// Smart-tokenize each string in parallel.
+#[pyfunction]
+fn smart_tokenize_batch(py: Python<'_>, strings: Vec<String>) -> Vec<Vec<String>> {
+    py.allow_threads(|| {
+        strings
+            .par_iter()
+            .map(|s| preprocess::smart_tokenize(s))
+            .collect()
+    })
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -229,5 +278,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(preprocess_batch, m)?)?;
     m.add_function(wrap_pyfunction!(ngram_tokenize_batch, m)?)?;
     m.add_function(wrap_pyfunction!(whitespace_tokenize_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(character_tokenize, m)?)?;
+    m.add_function(wrap_pyfunction!(smart_tokenize, m)?)?;
+    m.add_function(wrap_pyfunction!(character_tokenize_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(smart_tokenize_batch, m)?)?;
     Ok(())
 }
