@@ -225,6 +225,8 @@ beider_morse("Goldstein", ashkenazi=True)  # Ashkenazi-specific rules
 |---|---|
 | `ngram_tokenize(s, n=2)` | Character n-gram tokenization |
 | `whitespace_tokenize(s)` | Split on whitespace |
+| `character_tokenize(s)` | Individual character tokens (whitespace stripped) |
+| `smart_tokenize(s)` | CJK-aware tokenizer (CJK chars become tokens, Latin runs split on whitespace) |
 
 ### Domain preprocessors
 
@@ -505,6 +507,47 @@ matcher.score("candidate")              # float | None
 matcher.score_chunk(["a", "b", "c"])    # [(index, score), ...]
 ```
 
+## Async API
+
+The `reclink.async_api` module wraps every CPU-bound operation with `asyncio.to_thread()`, releasing the event loop while Rust + Rayon compute in the background.
+
+```python
+import asyncio
+import reclink.async_api as async_reclink
+
+async def main():
+    # All the familiar functions, now async
+    matrix = await async_reclink.cdist(["Jon", "Jane"], ["John", "Janet"])
+    best = await async_reclink.match_best("Jon", ["John", "Jane", "James"])
+    batch = await async_reclink.match_batch("Jon", ["John", "Jane"], threshold=0.7)
+
+    # Arrow variants
+    best_arrow = await async_reclink.match_best_arrow("Jon", ["John", "Jane"])
+    batch_arrow = await async_reclink.match_batch_arrow("Jon", ["John"], threshold=0.5)
+
+    # Element-wise and preprocessing
+    scores = await async_reclink.pairwise_similarity(["Jon"], ["John"])
+    cleaned = await async_reclink.preprocess_batch(["  Jon  "], ["fold_case", "normalize_whitespace"])
+
+asyncio.run(main())
+```
+
+### Async Pipeline
+
+Wrap a fully-configured `ReclinkPipeline` for use in async code:
+
+```python
+from reclink.async_api import AsyncPipeline
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = ReclinkPipeline.builder().compare_string("name").classify_threshold(0.85).build()
+async_pipeline = AsyncPipeline(pipeline)
+
+matches = await async_pipeline.dedup(df)
+clusters = await async_pipeline.dedup_cluster(df)
+linked = await async_pipeline.link(df_left, df_right)
+```
+
 ## Pipeline
 
 The `ReclinkPipeline` uses a builder pattern to configure blocking, comparison, classification, and clustering stages.
@@ -772,6 +815,39 @@ result["distance"]  # 1
 result["ops"]       # ["match:S", "match:m", "sub:i->y", "match:t", "match:h"]
 ```
 
+## Custom Metrics
+
+Register your own Python similarity functions and use them everywhere built-in metrics work — `cdist`, `match_best`, `match_batch`, pipelines, and more.
+
+```python
+from reclink import register_metric, unregister_metric, list_custom_metrics
+
+# 1. Bare decorator — uses the function name as the metric name
+@register_metric
+def overlap(a: str, b: str) -> float:
+    sa, sb = set(a), set(b)
+    return len(sa & sb) / max(len(sa | sb), 1)
+
+# 2. Decorator with explicit name
+@register_metric("my_metric")
+def _impl(a: str, b: str) -> float:
+    return 1.0 if a == b else 0.0
+
+# 3. Direct call
+register_metric("exact_lower", lambda a, b: float(a.lower() == b.lower()))
+
+# Use custom metrics like built-in ones
+from reclink import cdist, match_best
+cdist(["Jon"], ["John"], scorer="overlap")
+match_best("Jon", ["John", "Jane"], scorer="my_metric")
+
+# Management
+list_custom_metrics()           # ["overlap", "my_metric", "exact_lower"]
+unregister_metric("my_metric")  # True
+```
+
+> **Note:** Custom metrics acquire the GIL on each call, so batch operations with custom metrics are not parallelized. For hot paths, prefer built-in metrics.
+
 ## Language Detection
 
 Detect the language origin of a name (uses Beider-Morse language detection):
@@ -831,6 +907,7 @@ reclink is designed for speed:
 - **Rust core** — all string metrics, phonetic algorithms, and pipeline logic run in compiled Rust
 - **Rayon parallelism** — `cdist` and pipeline stages parallelize across CPU cores
 - **Enum dispatch** — metrics use enum dispatch instead of dynamic dispatch, avoiding vtable overhead
+- **Bit-parallel acceleration** — Myers' algorithm for Levenshtein and bitmask-based Jaro on strings up to 64 characters, with automatic fallback to classic algorithms for longer strings
 - **Zero-copy where possible** — PyO3 bindings minimize data copying between Python and Rust
 - **Max string length safeguard** — configurable limit (default 10,000 chars) prevents OOM on adversarial input
 
