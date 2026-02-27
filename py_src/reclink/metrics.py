@@ -101,6 +101,8 @@ if TYPE_CHECKING:
     import numpy as np
     from numpy.typing import NDArray
 
+    from reclink._core import PhoneticAlgorithm, Scorer
+
 
 def levenshtein(a: str, b: str) -> int:
     """Compute the Levenshtein edit distance between two strings.
@@ -660,8 +662,8 @@ def smith_waterman_similarity(a: str, b: str) -> float:
 def phonetic_hybrid(
     a: str,
     b: str,
-    phonetic: str = "soundex",
-    metric: str = "jaro_winkler",
+    phonetic: PhoneticAlgorithm = "soundex",
+    metric: Scorer = "jaro_winkler",
     phonetic_weight: float = 0.3,
 ) -> float:
     """Compute phonetic + edit distance hybrid similarity.
@@ -690,7 +692,7 @@ def phonetic_hybrid(
 def match_best(
     query: str,
     candidates: list[str],
-    scorer: str = "jaro_winkler",
+    scorer: Scorer = "jaro_winkler",
     threshold: float | None = None,
     workers: int | None = None,
 ) -> tuple[str, float, int] | None:
@@ -725,7 +727,7 @@ def match_best(
 def match_batch(
     query: str,
     candidates: list[str],
-    scorer: str = "jaro_winkler",
+    scorer: Scorer = "jaro_winkler",
     threshold: float | None = None,
     limit: int | None = None,
     workers: int | None = None,
@@ -763,7 +765,7 @@ def match_batch(
 def cdist(
     a: Sequence[str],
     b: Sequence[str],
-    scorer: str = "jaro_winkler",
+    scorer: Scorer = "jaro_winkler",
     workers: int | None = None,
 ) -> NDArray[np.float64]:
     """Compute pairwise similarity matrix between two lists of strings.
