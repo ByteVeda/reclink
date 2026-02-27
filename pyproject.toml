@@ -23,6 +23,9 @@ dev = [
     "mypy>=1.13",
 ]
 
+[project.scripts]
+reclink = "reclink.cli:main"
+
 [tool.maturin]
 python-source = "py_src"
 module-name = "reclink._core"

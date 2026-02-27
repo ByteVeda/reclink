@@ -87,6 +87,9 @@ pub fn parse_phonetic_algorithm(name: &str) -> PyResult<phonetic_mod::PhoneticAl
         "cologne_phonetic" => Ok(phonetic_mod::PhoneticAlgorithm::ColognePhonetic(
             phonetic_mod::ColognePhonetic,
         )),
+        "beider_morse" => Ok(phonetic_mod::PhoneticAlgorithm::BeiderMorse(
+            phonetic_mod::BeiderMorse::new(),
+        )),
         _ => Err(PyValueError::new_err(format!(
             "unknown phonetic algorithm: {name}"
         ))),

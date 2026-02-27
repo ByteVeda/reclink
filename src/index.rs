@@ -50,6 +50,21 @@ impl PyBkTree {
         self.inner.len()
     }
 
+    /// Insert a new string and return its assigned index.
+    fn insert(&mut self, s: &str) -> usize {
+        self.inner.insert_new(s)
+    }
+
+    /// Soft-delete a string by index.
+    fn remove(&mut self, index: usize) -> bool {
+        self.inner.remove(index)
+    }
+
+    /// Check if an index is valid and not deleted.
+    fn __contains__(&self, index: usize) -> bool {
+        self.inner.contains(index)
+    }
+
     /// Save the BK-tree to a file.
     fn save(&self, path: &str) -> PyResult<()> {
         index::persistence::save_to_file(&self.inner, std::path::Path::new(path))
@@ -106,6 +121,26 @@ impl PyVpTree {
 
     fn __len__(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Insert a new string into the buffer and return its assigned index.
+    fn insert(&mut self, s: &str) -> usize {
+        self.inner.insert_new(s)
+    }
+
+    /// Soft-delete a string by index.
+    fn remove(&mut self, index: usize) -> bool {
+        self.inner.remove(index)
+    }
+
+    /// Check if an index is valid and not deleted.
+    fn __contains__(&self, index: usize) -> bool {
+        self.inner.contains(index)
+    }
+
+    /// Rebuild the tree, consolidating buffer items and removing deleted entries.
+    fn rebuild(&mut self) {
+        self.inner.rebuild();
     }
 
     /// Save the VP-tree to a file.
@@ -165,6 +200,21 @@ impl PyNgramIndex {
         self.inner.len()
     }
 
+    /// Insert a new string and return its assigned index.
+    fn insert(&mut self, s: &str) -> usize {
+        self.inner.insert_new(s)
+    }
+
+    /// Soft-delete a string by index.
+    fn remove(&mut self, index: usize) -> bool {
+        self.inner.remove(index)
+    }
+
+    /// Check if an index is valid and not deleted.
+    fn __contains__(&self, index: usize) -> bool {
+        self.inner.contains(index)
+    }
+
     /// Save the n-gram index to a file.
     fn save(&self, path: &str) -> PyResult<()> {
         index::persistence::save_to_file(&self.inner, std::path::Path::new(path))
@@ -181,9 +231,61 @@ impl PyNgramIndex {
     }
 }
 
+/// Memory-mapped N-gram index for datasets larger than RAM.
+///
+/// Build an index once with `build_and_save()`, then open it with `open()`.
+/// Queries operate directly on memory-mapped data without loading the full
+/// index into the heap.
+#[pyclass]
+struct PyMmapNgramIndex {
+    inner: index::MmapNgramIndex,
+}
+
+#[pymethods]
+impl PyMmapNgramIndex {
+    /// Build an index from strings and save to a file.
+    #[staticmethod]
+    fn build_and_save(strings: Vec<String>, n: usize, path: &str) -> PyResult<()> {
+        let refs: Vec<&str> = strings.iter().map(|s| s.as_str()).collect();
+        index::MmapNgramIndex::build_and_save(&refs, n, std::path::Path::new(path))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Open a memory-mapped index from a file.
+    #[staticmethod]
+    fn open(path: &str) -> PyResult<Self> {
+        let inner = index::MmapNgramIndex::open(std::path::Path::new(path))
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    /// Find all strings sharing at least `threshold` n-grams with the query.
+    fn search(&self, query: &str, threshold: usize) -> Vec<(String, usize, usize)> {
+        self.inner
+            .search(query, threshold)
+            .into_iter()
+            .map(|r| (r.value, r.index, r.shared_ngrams))
+            .collect()
+    }
+
+    /// Find the k strings sharing the most n-grams with the query.
+    fn search_top_k(&self, query: &str, k: usize) -> Vec<(String, usize, usize)> {
+        self.inner
+            .search_top_k(query, k)
+            .into_iter()
+            .map(|r| (r.value, r.index, r.shared_ngrams))
+            .collect()
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBkTree>()?;
     m.add_class::<PyVpTree>()?;
     m.add_class::<PyNgramIndex>()?;
+    m.add_class::<PyMmapNgramIndex>()?;
     Ok(())
 }

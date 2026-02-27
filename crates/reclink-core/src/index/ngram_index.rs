@@ -4,7 +4,7 @@
 //! At query time, counts how many n-grams the query shares with each candidate
 //! and returns those above a threshold.
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::preprocess::ngram_tokenize;
@@ -26,6 +26,8 @@ pub struct NgramIndex {
     index: AHashMap<String, Vec<usize>>,
     strings: Vec<String>,
     n: usize,
+    #[serde(default)]
+    deleted: AHashSet<usize>,
 }
 
 impl NgramIndex {
@@ -46,6 +48,7 @@ impl NgramIndex {
             index,
             strings: owned,
             n,
+            deleted: AHashSet::new(),
         }
     }
 
@@ -89,16 +92,43 @@ impl NgramIndex {
         results
     }
 
-    /// Returns the number of strings in the index.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.strings.len()
+    /// Insert a new string and return its assigned index.
+    pub fn insert_new(&mut self, s: &str) -> usize {
+        let index = self.strings.len();
+        self.strings.push(s.to_string());
+        let ngrams = ngram_tokenize(s, self.n);
+        for ng in ngrams {
+            self.index.entry(ng).or_default().push(index);
+        }
+        index
     }
 
-    /// Returns whether the index is empty.
+    /// Soft-delete a string by index. Returns `true` if the index was valid
+    /// and not already deleted.
+    pub fn remove(&mut self, index: usize) -> bool {
+        if index >= self.strings.len() || self.deleted.contains(&index) {
+            return false;
+        }
+        self.deleted.insert(index);
+        true
+    }
+
+    /// Returns `true` if the index is valid and not deleted.
+    #[must_use]
+    pub fn contains(&self, index: usize) -> bool {
+        index < self.strings.len() && !self.deleted.contains(&index)
+    }
+
+    /// Returns the number of active (non-deleted) strings in the index.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.strings.len() - self.deleted.len()
+    }
+
+    /// Returns whether the index has no active strings.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.strings.is_empty()
+        self.len() == 0
     }
 
     fn count_shared(&self, query_ngrams: &[String]) -> Vec<(usize, usize)> {
@@ -106,7 +136,9 @@ impl NgramIndex {
         for ng in query_ngrams {
             if let Some(indices) = self.index.get(ng) {
                 for &idx in indices {
-                    *counts.entry(idx).or_insert(0) += 1;
+                    if !self.deleted.contains(&idx) {
+                        *counts.entry(idx).or_insert(0) += 1;
+                    }
                 }
             }
         }
@@ -154,5 +186,37 @@ mod tests {
         let index = NgramIndex::build(&["hello", "world"], 2);
         let results = index.search("xyz", 1);
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn insert_after_build() {
+        let mut index = NgramIndex::build(&["hello", "world"], 2);
+        let idx = index.insert_new("help");
+        assert_eq!(idx, 2);
+        assert_eq!(index.len(), 3);
+        let results = index.search("help", 2);
+        let indices: Vec<usize> = results.iter().map(|r| r.index).collect();
+        assert!(indices.contains(&2));
+    }
+
+    #[test]
+    fn remove_excludes_from_search() {
+        let mut index = NgramIndex::build(&["hello", "help", "world"], 2);
+        assert!(index.contains(1));
+        assert!(index.remove(1)); // remove "help"
+        assert!(!index.contains(1));
+        assert_eq!(index.len(), 2);
+
+        let results = index.search("help", 3);
+        let indices: Vec<usize> = results.iter().map(|r| r.index).collect();
+        assert!(!indices.contains(&1));
+    }
+
+    #[test]
+    fn remove_idempotent() {
+        let mut index = NgramIndex::build(&["hello"], 2);
+        assert!(index.remove(0));
+        assert!(!index.remove(0));
+        assert!(!index.remove(99));
     }
 }

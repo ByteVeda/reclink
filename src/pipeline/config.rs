@@ -35,6 +35,11 @@ pub enum PyBlockerConfig {
         field: String,
         resolution: String,
     },
+    Trie {
+        field: String,
+        min_prefix_len: usize,
+        max_frequency: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -72,5 +77,14 @@ pub enum PyClassifierConfig {
         max_iterations: usize,
         convergence_threshold: f64,
         initial_p_match: f64,
+    },
+    ThresholdBands {
+        upper: f64,
+        lower: f64,
+    },
+    WeightedBands {
+        weights: Vec<f64>,
+        upper: f64,
+        lower: f64,
     },
 }

@@ -51,7 +51,44 @@ pub use token_set::TokenSet;
 pub use token_sort::TokenSort;
 pub use weighted_levenshtein::WeightedLevenshtein;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::error::{ReclinkError, Result};
+
+/// Default maximum string length (in characters) for metric computation.
+/// Strings longer than this limit return 0.0 similarity / max distance.
+const DEFAULT_MAX_STRING_LENGTH: usize = 10_000;
+
+/// Global maximum string length. Use [`set_max_string_length`] and
+/// [`get_max_string_length`] to configure at runtime.
+static MAX_STRING_LENGTH: AtomicUsize = AtomicUsize::new(DEFAULT_MAX_STRING_LENGTH);
+
+/// Set the maximum string length (in characters) for metric computation.
+///
+/// Strings exceeding this length will return 0.0 similarity without computing
+/// the full algorithm, preventing OOM on adversarial or accidental huge inputs.
+///
+/// Set to `0` to disable the check entirely.
+pub fn set_max_string_length(max_len: usize) {
+    MAX_STRING_LENGTH.store(max_len, Ordering::Relaxed);
+}
+
+/// Get the current maximum string length limit.
+#[must_use]
+pub fn get_max_string_length() -> usize {
+    MAX_STRING_LENGTH.load(Ordering::Relaxed)
+}
+
+/// Returns `true` if either string exceeds the configured max length.
+/// A max length of 0 disables the check.
+#[inline]
+fn exceeds_max_length(a: &str, b: &str) -> bool {
+    let max_len = MAX_STRING_LENGTH.load(Ordering::Relaxed);
+    if max_len == 0 {
+        return false;
+    }
+    a.chars().count() > max_len || b.chars().count() > max_len
+}
 
 /// A metric that computes edit distance between two strings.
 ///
@@ -131,8 +168,14 @@ pub enum Metric {
 
 impl Metric {
     /// Computes a normalized similarity score in \[0, 1\] regardless of underlying metric type.
+    ///
+    /// Returns 0.0 immediately if either string exceeds the configured
+    /// [`MAX_STRING_LENGTH`] (see [`set_max_string_length`]).
     #[must_use]
     pub fn similarity(&self, a: &str, b: &str) -> f64 {
+        if exceeds_max_length(a, b) {
+            return 0.0;
+        }
         match self {
             Metric::Levenshtein(m) => m.normalized_similarity(a, b).unwrap_or(0.0),
             Metric::DamerauLevenshtein(m) => m.normalized_similarity(a, b).unwrap_or(0.0),
@@ -193,5 +236,38 @@ pub fn metric_from_name(name: &str) -> Result<Metric> {
              weighted_levenshtein, token_sort, token_set, partial_ratio, lcs, \
              longest_common_substring, ngram_similarity, smith_waterman, phonetic_hybrid"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // All max-string-length tests are in one function to avoid global-state
+    // race conditions when cargo runs tests in parallel.
+    #[test]
+    fn max_string_length_behavior() {
+        let original = get_max_string_length();
+
+        // 1. Enforced: a small limit blocks large strings
+        set_max_string_length(5);
+        assert!(exceeds_max_length("abcdef", "ab")); // 6 > 5
+        assert!(!exceeds_max_length("abc", "ab")); // 3 <= 5
+
+        // 2. Similarity returns 0.0 for oversized strings
+        let metric = Metric::JaroWinkler(JaroWinkler::default());
+        assert_eq!(metric.similarity("abcdef", "abcdef"), 0.0);
+        assert!(metric.similarity("abc", "abc") > 0.0);
+
+        // 3. Roundtrip
+        set_max_string_length(42);
+        assert_eq!(get_max_string_length(), 42);
+
+        // 4. Disabled with 0 — no string is "too long"
+        set_max_string_length(0);
+        assert!(!exceeds_max_length("a".repeat(100_000).as_str(), "b"));
+
+        // Restore
+        set_max_string_length(original);
     }
 }
