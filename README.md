@@ -21,6 +21,7 @@ Blazing-fast fuzzy matching and record linkage library powered by Rust.
 - **Parallel computation** — Rayon-powered `cdist` and pipeline execution
 - **Transliteration** — Cyrillic-to-Latin and Greek-to-Latin character transliteration
 - **Edit distance alignment** — visual alignment showing match/substitute/insert/delete operations
+- **Type-safe parameters** — `Literal` type aliases for all scorer/algorithm/metric arguments, giving IDE autocomplete and mypy/pyright typo detection
 - **Language detection** — detect the language of a string (exposed from Beider-Morse internals)
 - **Pipeline serialization** — save/load pipelines as JSON for reproducible workflows
 - **Pipeline profiling** — per-stage timing for performance tuning
@@ -870,6 +871,32 @@ a, b, status = validate_strings("hello", "")
 ```
 
 `validate_strings` documents the library's edge-case conventions: distance metrics return the length of the non-empty string when one input is empty; similarity metrics return 0.0 (or 1.0 if both are empty).
+
+## Type Safety
+
+All `scorer`, `algorithm`, `metric`, `form`, `resolution`, and `linkage` parameters are typed with `Literal[...]` unions. This gives you IDE autocomplete for valid values and catches typos at type-check time with mypy or pyright.
+
+The type aliases are importable for use in your own code:
+
+```python
+from reclink import Scorer, PhoneticAlgorithm, NormalizationForm, DateResolution, Linkage, CompositePreset
+
+def my_match(a: str, b: str, scorer: Scorer = "jaro_winkler") -> float:
+    from reclink import jaro_winkler_similarity, levenshtein_similarity
+    if scorer == "jaro_winkler":
+        return jaro_winkler_similarity(a, b)
+    return levenshtein_similarity(a, b)
+```
+
+If you need to pass a custom or dynamic metric name that isn't in the `Literal` union, use a `# type: ignore[arg-type]` comment or `typing.cast`:
+
+```python
+from typing import cast
+from reclink import cdist, Scorer
+
+name = get_metric_name()         # str at runtime
+cdist(a, b, scorer=cast(Scorer, name))
+```
 
 ## Development
 
