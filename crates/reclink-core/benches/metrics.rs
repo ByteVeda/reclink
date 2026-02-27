@@ -1,16 +1,48 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use reclink_core::metrics::damerau_levenshtein::damerau_levenshtein_distance_threshold;
-use reclink_core::metrics::levenshtein::levenshtein_distance_threshold;
+use reclink_core::metrics::levenshtein::{levenshtein_distance, levenshtein_distance_threshold};
 use reclink_core::metrics::{
-    Cosine, DamerauLevenshtein, DistanceMetric, Hamming, Jaccard, Jaro, JaroWinkler, Lcs,
+    Cosine, DamerauLevenshtein, DistanceMetric, Jaccard, Jaro, JaroWinkler, Lcs,
     Levenshtein, LongestCommonSubstring, NgramSimilarity, PartialRatio, PhoneticHybrid,
     SimilarityMetric, SmithWaterman, SorensenDice, TokenSet, TokenSort, WeightedLevenshtein,
 };
 
 fn bench_levenshtein(c: &mut Criterion) {
     let m = Levenshtein;
-    c.bench_function("levenshtein", |b| {
+    c.bench_function("levenshtein_short_7x7", |b| {
         b.iter(|| m.distance(black_box("kitten"), black_box("sitting")))
+    });
+}
+
+fn bench_levenshtein_medium(c: &mut Criterion) {
+    let a = "the quick brown fox jumps over the lazy dog";
+    let b = "the quack brawn fix jumped over a lazy cat";
+    c.bench_function("levenshtein_medium_43x43", |b_| {
+        b_.iter(|| levenshtein_distance(black_box(a), black_box(b)))
+    });
+}
+
+fn bench_levenshtein_boundary(c: &mut Criterion) {
+    let a: String = (0..64).map(|i| (b'a' + (i % 26)) as char).collect();
+    let b: String = a
+        .chars()
+        .enumerate()
+        .map(|(i, c)| if i == 10 || i == 30 || i == 50 { 'Z' } else { c })
+        .collect();
+    c.bench_function("levenshtein_boundary_64x64", |b_| {
+        b_.iter(|| levenshtein_distance(black_box(&a), black_box(&b)))
+    });
+}
+
+fn bench_levenshtein_long(c: &mut Criterion) {
+    let a: String = (0..100).map(|i| (b'a' + (i % 26)) as char).collect();
+    let b: String = a
+        .chars()
+        .enumerate()
+        .map(|(i, c)| if i == 20 || i == 50 || i == 80 { 'Z' } else { c })
+        .collect();
+    c.bench_function("levenshtein_long_100x100", |b_| {
+        b_.iter(|| levenshtein_distance(black_box(&a), black_box(&b)))
     });
 }
 
@@ -23,8 +55,17 @@ fn bench_damerau_levenshtein(c: &mut Criterion) {
 
 fn bench_jaro(c: &mut Criterion) {
     let m = Jaro;
-    c.bench_function("jaro", |b| {
+    c.bench_function("jaro_short_6x6", |b| {
         b.iter(|| m.similarity(black_box("martha"), black_box("marhta")))
+    });
+}
+
+fn bench_jaro_medium(c: &mut Criterion) {
+    let a = "the quick brown fox jumps over the lazy dog";
+    let b = "the quack brawn fix jumped over a lazy cat";
+    let m = Jaro;
+    c.bench_function("jaro_medium_43x43", |b_| {
+        b_.iter(|| m.similarity(black_box(a), black_box(b)))
     });
 }
 
@@ -32,6 +73,15 @@ fn bench_jaro_winkler(c: &mut Criterion) {
     let m = JaroWinkler::default();
     c.bench_function("jaro_winkler", |b| {
         b.iter(|| m.similarity(black_box("martha"), black_box("marhta")))
+    });
+}
+
+fn bench_jaro_winkler_medium(c: &mut Criterion) {
+    let a = "the quick brown fox jumps over the lazy dog";
+    let b = "the quack brawn fix jumped over a lazy cat";
+    let m = JaroWinkler::default();
+    c.bench_function("jaro_winkler_medium_43x43", |b_| {
+        b_.iter(|| m.similarity(black_box(a), black_box(b)))
     });
 }
 
@@ -146,9 +196,14 @@ fn bench_damerau_levenshtein_threshold(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_levenshtein,
+    bench_levenshtein_medium,
+    bench_levenshtein_boundary,
+    bench_levenshtein_long,
     bench_damerau_levenshtein,
     bench_jaro,
+    bench_jaro_medium,
     bench_jaro_winkler,
+    bench_jaro_winkler_medium,
     bench_cosine,
     bench_jaccard,
     bench_sorensen_dice,
