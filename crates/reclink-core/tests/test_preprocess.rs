@@ -113,6 +113,82 @@ fn unicode_normalization_affects_matching() {
     assert_eq!(cafe_nfc, cafe_nfd, "NFC normalization should unify forms");
 }
 
+// --- Domain preprocessors ---
+
+#[test]
+fn clean_name_integration() {
+    use reclink_core::preprocess::clean_name;
+    assert_eq!(clean_name("Mr. John Smith Jr."), "john smith");
+    assert_eq!(clean_name("Smith, John"), "john smith");
+    assert_eq!(clean_name("Mary-Jane Watson"), "mary-jane watson");
+}
+
+#[test]
+fn clean_address_integration() {
+    use reclink_core::preprocess::clean_address;
+    assert_eq!(clean_address("123 Main St."), "123 main street");
+    assert_eq!(clean_address("100 N Main St"), "100 north main street");
+}
+
+#[test]
+fn clean_company_integration() {
+    use reclink_core::preprocess::clean_company;
+    assert_eq!(clean_company("Acme Inc."), "acme");
+    assert_eq!(clean_company("Ben & Jerry's"), "ben and jerry's");
+}
+
+#[test]
+fn normalize_email_integration() {
+    use reclink_core::preprocess::normalize_email;
+    assert_eq!(
+        normalize_email("User.Name+tag@Gmail.COM"),
+        "username@gmail.com"
+    );
+    assert_eq!(normalize_email("User@Example.COM"), "user@example.com");
+}
+
+#[test]
+fn normalize_url_integration() {
+    use reclink_core::preprocess::normalize_url;
+    assert_eq!(
+        normalize_url("HTTP://WWW.Example.COM/path/"),
+        "http://example.com/path"
+    );
+    assert_eq!(
+        normalize_url("http://example.com:80/path"),
+        "http://example.com/path"
+    );
+    assert_eq!(
+        normalize_url("http://example.com/path?z=1&a=2"),
+        "http://example.com/path?a=2&z=1"
+    );
+}
+
+#[test]
+fn synonym_expand_via_apply_ops() {
+    let mut table = ahash::AHashMap::new();
+    table.insert("big".to_string(), "large".to_string());
+    table.insert("cat".to_string(), "feline".to_string());
+    let result = apply_ops("the big cat", &[PreprocessOp::SynonymExpand { table }]).unwrap();
+    assert_eq!(result, "the large feline");
+}
+
+#[test]
+fn domain_ops_in_batch() {
+    let inputs = vec!["Mr. John Smith Jr.".to_string(), "Smith, Jane".to_string()];
+    let ops = vec![PreprocessOp::CleanName];
+    let results = preprocess_batch(&inputs, &ops).unwrap();
+    assert_eq!(results[0], "john smith");
+    assert_eq!(results[1], "jane smith");
+}
+
+#[test]
+fn preset_name_matching_integration() {
+    use reclink_core::metrics::CompositeScorer;
+    let scorer = CompositeScorer::preset("name_matching").unwrap();
+    assert!(scorer.similarity("John Smith", "John Smith") > 0.99);
+}
+
 // --- Batch preprocessing ---
 
 #[test]
@@ -123,7 +199,7 @@ fn preprocess_batch_chain() {
         PreprocessOp::StripPunctuation,
         PreprocessOp::NormalizeWhitespace,
     ];
-    let results = preprocess_batch(&inputs, &ops);
+    let results = preprocess_batch(&inputs, &ops).unwrap();
     assert_eq!(results[0], "hello world");
     assert_eq!(results[1], "dr smith");
 }
@@ -132,7 +208,7 @@ fn preprocess_batch_chain() {
 fn preprocess_batch_empty() {
     let inputs: Vec<String> = vec![];
     let ops = vec![PreprocessOp::FoldCase];
-    let results = preprocess_batch(&inputs, &ops);
+    let results = preprocess_batch(&inputs, &ops).unwrap();
     assert!(results.is_empty());
 }
 
@@ -144,6 +220,7 @@ fn apply_ops_unicode_and_case() {
             PreprocessOp::NormalizeUnicode(NormalizationForm::Nfkc),
             PreprocessOp::FoldCase,
         ],
-    );
+    )
+    .unwrap();
     assert_eq!(result, "café");
 }

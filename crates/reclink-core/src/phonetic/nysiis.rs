@@ -4,7 +4,7 @@ use crate::phonetic::PhoneticEncoder;
 
 /// NYSIIS produces phonetic codes that are generally considered more accurate
 /// than Soundex for matching names.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Nysiis;
 
 impl PhoneticEncoder for Nysiis {

@@ -5,7 +5,7 @@ use crate::metrics::DistanceMetric;
 
 /// Hamming distance counts the number of positions where corresponding
 /// characters differ. Requires strings of equal length.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Hamming;
 
 impl DistanceMetric for Hamming {

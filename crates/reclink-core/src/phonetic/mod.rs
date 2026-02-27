@@ -1,13 +1,17 @@
 //! Phonetic encoding algorithms for name matching.
 //!
-//! Provides Soundex, Metaphone, Double Metaphone, and NYSIIS encoders
-//! through a common [`PhoneticEncoder`] trait.
+//! Provides Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone,
+//! and Cologne Phonetic encoders through a common [`PhoneticEncoder`] trait.
 
+mod caverphone;
+mod cologne;
 mod double_metaphone;
 mod metaphone;
 mod nysiis;
 mod soundex;
 
+pub use caverphone::Caverphone;
+pub use cologne::ColognePhonetic;
 pub use double_metaphone::DoubleMetaphone;
 pub use metaphone::Metaphone;
 pub use nysiis::Nysiis;
@@ -30,7 +34,7 @@ pub trait PhoneticEncoder {
 }
 
 /// Enum dispatch for phonetic encoders.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PhoneticAlgorithm {
     /// Soundex encoding.
     Soundex(Soundex),
@@ -40,6 +44,10 @@ pub enum PhoneticAlgorithm {
     DoubleMetaphone(DoubleMetaphone),
     /// NYSIIS encoding.
     Nysiis(Nysiis),
+    /// Caverphone 2 encoding.
+    Caverphone(Caverphone),
+    /// Cologne Phonetic (Kolner Phonetik) encoding.
+    ColognePhonetic(ColognePhonetic),
 }
 
 impl PhoneticEncoder for PhoneticAlgorithm {
@@ -49,6 +57,8 @@ impl PhoneticEncoder for PhoneticAlgorithm {
             PhoneticAlgorithm::Metaphone(e) => e.encode(s),
             PhoneticAlgorithm::DoubleMetaphone(e) => e.encode(s),
             PhoneticAlgorithm::Nysiis(e) => e.encode(s),
+            PhoneticAlgorithm::Caverphone(e) => e.encode(s),
+            PhoneticAlgorithm::ColognePhonetic(e) => e.encode(s),
         }
     }
 }

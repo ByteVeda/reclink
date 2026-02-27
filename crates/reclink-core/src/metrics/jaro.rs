@@ -4,7 +4,7 @@ use crate::metrics::SimilarityMetric;
 
 /// Jaro similarity measures the edit distance between two strings,
 /// accounting for character matches within a sliding window and transpositions.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Jaro;
 
 impl SimilarityMetric for Jaro {

@@ -15,6 +15,7 @@ pub mod classify;
 pub mod cluster;
 pub mod compare;
 pub mod error;
+pub mod index;
 pub mod metrics;
 pub mod phonetic;
 pub mod pipeline;

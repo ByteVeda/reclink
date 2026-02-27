@@ -4,7 +4,7 @@ use crate::phonetic::PhoneticEncoder;
 
 /// Metaphone produces a variable-length phonetic key that represents
 /// the English pronunciation of a word.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Metaphone;
 
 impl PhoneticEncoder for Metaphone {

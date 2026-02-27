@@ -6,7 +6,7 @@ use crate::metrics::SimilarityMetric;
 
 /// Sorensen-Dice coefficient measures the overlap between two sets of
 /// character bigrams. It is defined as 2 * |intersection| / (|A| + |B|).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SorensenDice;
 
 impl SimilarityMetric for SorensenDice {
