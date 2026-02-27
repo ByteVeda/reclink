@@ -1,6 +1,7 @@
 //! Damerau-Levenshtein distance (optimal string alignment variant).
 //!
 //! Extends Levenshtein with transposition of adjacent characters.
+//! Uses 3-row rolling DP: O(m·n) time, O(min(m,n)) space.
 
 use crate::error::Result;
 use crate::metrics::DistanceMetric;
@@ -16,9 +17,53 @@ impl DistanceMetric for DamerauLevenshtein {
     }
 }
 
+/// 3-row rolling DP for optimal string alignment distance.
+///
+/// Uses only 3 rows (prev-prev, prev, current) instead of the full matrix,
+/// reducing space from O(m·n) to O(min(m,n)).
+fn osa_three_row(row_chars: &[char], col_chars: &[char]) -> usize {
+    let rows = row_chars.len();
+    let cols = col_chars.len();
+
+    let mut prev_prev = vec![0usize; cols + 1];
+    let mut prev: Vec<usize> = (0..=cols).collect();
+    let mut curr = vec![0usize; cols + 1];
+
+    for i in 1..=rows {
+        curr[0] = i;
+
+        for j in 1..=cols {
+            let cost = if row_chars[i - 1] == col_chars[j - 1] {
+                0
+            } else {
+                1
+            };
+
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+
+            if i > 1
+                && j > 1
+                && row_chars[i - 1] == col_chars[j - 2]
+                && row_chars[i - 2] == col_chars[j - 1]
+            {
+                curr[j] = curr[j].min(prev_prev[j - 2] + 1);
+            }
+        }
+
+        // Rotate rows
+        std::mem::swap(&mut prev_prev, &mut prev);
+        std::mem::swap(&mut prev, &mut curr);
+        for v in curr.iter_mut() {
+            *v = 0;
+        }
+    }
+
+    prev[cols]
+}
+
 /// Computes the optimal string alignment distance (restricted Damerau-Levenshtein).
 ///
-/// Time: O(m*n), Space: O(m*n)
+/// Time: O(m*n), Space: O(min(m,n))
 #[must_use]
 pub fn damerau_levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
@@ -33,38 +78,68 @@ pub fn damerau_levenshtein_distance(a: &str, b: &str) -> usize {
         return a_len;
     }
 
-    let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
-
-    for (i, row) in matrix.iter_mut().enumerate().take(a_len + 1) {
-        row[0] = i;
+    // Use shorter string as columns for less memory
+    if a_len <= b_len {
+        osa_three_row(&b_chars, &a_chars)
+    } else {
+        osa_three_row(&a_chars, &b_chars)
     }
-    for (j, val) in matrix[0].iter_mut().enumerate().take(b_len + 1) {
-        *val = j;
-    }
+}
 
-    for i in 1..=a_len {
-        for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+/// 3-row rolling DP with row-minimum pruning for early termination.
+fn osa_three_row_threshold(
+    row_chars: &[char],
+    col_chars: &[char],
+    max_distance: usize,
+) -> Option<usize> {
+    let rows = row_chars.len();
+    let cols = col_chars.len();
+
+    let mut prev_prev = vec![0usize; cols + 1];
+    let mut prev: Vec<usize> = (0..=cols).collect();
+    let mut curr = vec![0usize; cols + 1];
+
+    for i in 1..=rows {
+        curr[0] = i;
+        let mut row_min = curr[0];
+
+        for j in 1..=cols {
+            let cost = if row_chars[i - 1] == col_chars[j - 1] {
                 0
             } else {
                 1
             };
 
-            matrix[i][j] = (matrix[i - 1][j] + 1)
-                .min(matrix[i][j - 1] + 1)
-                .min(matrix[i - 1][j - 1] + cost);
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
 
             if i > 1
                 && j > 1
-                && a_chars[i - 1] == b_chars[j - 2]
-                && a_chars[i - 2] == b_chars[j - 1]
+                && row_chars[i - 1] == col_chars[j - 2]
+                && row_chars[i - 2] == col_chars[j - 1]
             {
-                matrix[i][j] = matrix[i][j].min(matrix[i - 2][j - 2] + 1);
+                curr[j] = curr[j].min(prev_prev[j - 2] + 1);
             }
+
+            row_min = row_min.min(curr[j]);
+        }
+
+        if row_min > max_distance {
+            return None;
+        }
+
+        std::mem::swap(&mut prev_prev, &mut prev);
+        std::mem::swap(&mut prev, &mut curr);
+        for v in curr.iter_mut() {
+            *v = 0;
         }
     }
 
-    matrix[a_len][b_len]
+    let result = prev[cols];
+    if result > max_distance {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 /// Computes Damerau-Levenshtein distance with early termination.
@@ -101,50 +176,11 @@ pub fn damerau_levenshtein_distance_threshold(
         };
     }
 
-    let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
-
-    for (i, row) in matrix.iter_mut().enumerate().take(a_len + 1) {
-        row[0] = i;
-    }
-    for (j, val) in matrix[0].iter_mut().enumerate().take(b_len + 1) {
-        *val = j;
-    }
-
-    for i in 1..=a_len {
-        let mut row_min = usize::MAX;
-
-        for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] {
-                0
-            } else {
-                1
-            };
-
-            matrix[i][j] = (matrix[i - 1][j] + 1)
-                .min(matrix[i][j - 1] + 1)
-                .min(matrix[i - 1][j - 1] + cost);
-
-            if i > 1
-                && j > 1
-                && a_chars[i - 1] == b_chars[j - 2]
-                && a_chars[i - 2] == b_chars[j - 1]
-            {
-                matrix[i][j] = matrix[i][j].min(matrix[i - 2][j - 2] + 1);
-            }
-
-            row_min = row_min.min(matrix[i][j]);
-        }
-
-        if row_min > max_distance {
-            return None;
-        }
-    }
-
-    let result = matrix[a_len][b_len];
-    if result > max_distance {
-        None
+    // Use shorter string as columns for less memory
+    if a_len <= b_len {
+        osa_three_row_threshold(&b_chars, &a_chars, max_distance)
     } else {
-        Some(result)
+        osa_three_row_threshold(&a_chars, &b_chars, max_distance)
     }
 }
 
@@ -190,7 +226,6 @@ mod tests {
 
     #[test]
     fn threshold_within() {
-        // "ab" -> "ba" = 1 (transposition), threshold 1 should succeed
         assert_eq!(
             damerau_levenshtein_distance_threshold("ab", "ba", 1),
             Some(1)
@@ -230,5 +265,26 @@ mod tests {
             damerau_levenshtein_distance_threshold("hello", "hello", 0),
             Some(0)
         );
+    }
+
+    #[test]
+    fn long_strings() {
+        let a: String = (0..100).map(|i| (b'a' + (i % 26)) as char).collect();
+        let b: String = a
+            .chars()
+            .enumerate()
+            .map(|(i, c)| if i == 50 { 'Z' } else { c })
+            .collect();
+        assert_eq!(damerau_levenshtein_distance(&a, &b), 1);
+    }
+
+    #[test]
+    fn transposition_long() {
+        let mut a_chars: Vec<char> = (0..100).map(|i| (b'a' + (i % 26)) as char).collect();
+        let b_chars = a_chars.clone();
+        a_chars.swap(50, 51);
+        let a: String = a_chars.into_iter().collect();
+        let b: String = b_chars.into_iter().collect();
+        assert_eq!(damerau_levenshtein_distance(&a, &b), 1);
     }
 }

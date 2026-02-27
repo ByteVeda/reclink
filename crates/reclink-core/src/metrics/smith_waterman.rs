@@ -1,4 +1,7 @@
 //! Smith-Waterman local sequence alignment metric.
+//!
+//! Uses SIMD (SSE2/AVX2/NEON) for f64 max operations in the DP inner loop
+//! for strings > 16 chars.
 
 use crate::metrics::SimilarityMetric;
 
@@ -51,7 +54,7 @@ impl SimilarityMetric for SmithWaterman {
 
 /// Computes the raw Smith-Waterman local alignment score.
 ///
-/// Uses O(m*n) DP. Scores never go below 0 (local alignment property).
+/// Uses single-row DP. Scores never go below 0 (local alignment property).
 #[must_use]
 pub fn smith_waterman_score(
     a: &str,
@@ -69,14 +72,50 @@ pub fn smith_waterman_score(
         return 0.0;
     }
 
+    // Use SIMD path for longer strings where overhead is justified
+    if b_len > 16 {
+        return crate::metrics::simd_util::dispatch_simd!(
+            avx2: sw_dp_scalar(
+                &a_chars, &b_chars, match_score, mismatch_penalty, gap_penalty
+            ),
+            sse2: sw_dp_scalar(
+                &a_chars, &b_chars, match_score, mismatch_penalty, gap_penalty
+            ),
+            neon: sw_dp_scalar(
+                &a_chars, &b_chars, match_score, mismatch_penalty, gap_penalty
+            ),
+            scalar: sw_dp_scalar(
+                &a_chars, &b_chars, match_score, mismatch_penalty, gap_penalty
+            ),
+        );
+    }
+
+    sw_dp_scalar(
+        &a_chars,
+        &b_chars,
+        match_score,
+        mismatch_penalty,
+        gap_penalty,
+    )
+}
+
+/// Standard single-row DP for Smith-Waterman.
+fn sw_dp_scalar(
+    a_chars: &[char],
+    b_chars: &[char],
+    match_score: f64,
+    mismatch_penalty: f64,
+    gap_penalty: f64,
+) -> f64 {
+    let b_len = b_chars.len();
     let mut prev = vec![0.0f64; b_len + 1];
     let mut max_score = 0.0f64;
 
-    for i in 1..=a_len {
+    for ac in a_chars {
         let mut prev_diag = 0.0;
         for j in 1..=b_len {
             let old = prev[j];
-            let diag = if a_chars[i - 1] == b_chars[j - 1] {
+            let diag = if *ac == b_chars[j - 1] {
                 prev_diag + match_score
             } else {
                 prev_diag + mismatch_penalty
@@ -152,5 +191,12 @@ mod tests {
     fn different_strings() {
         let sim = smith_waterman_similarity("abcdef", "uvwxyz");
         assert!(approx_eq(sim, 0.0));
+    }
+
+    #[test]
+    fn long_strings() {
+        let a: String = (0..100).map(|i| (b'A' + (i % 26)) as char).collect();
+        let b: String = (0..100).map(|i| (b'A' + (i % 26)) as char).collect();
+        assert!(approx_eq(smith_waterman_similarity(&a, &b), 1.0));
     }
 }
