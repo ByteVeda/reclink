@@ -169,6 +169,30 @@ impl BkTree {
         self.size == 0
     }
 
+    /// Estimates the heap memory usage of this tree in bytes.
+    #[must_use]
+    pub fn memory_usage(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>();
+        if let Some(root) = &self.root {
+            bytes += Self::node_memory_usage(root);
+        }
+        // deleted set overhead
+        bytes += self.deleted.capacity() * std::mem::size_of::<usize>();
+        bytes
+    }
+
+    fn node_memory_usage(node: &BkNode) -> usize {
+        let mut bytes = std::mem::size_of::<BkNode>();
+        bytes += node.value.capacity();
+        // AHashMap overhead: each entry is (key, value) + control bytes
+        bytes += node.children.capacity()
+            * (std::mem::size_of::<usize>() + std::mem::size_of::<BkNode>());
+        for (_, child) in &node.children {
+            bytes += Self::node_memory_usage(child);
+        }
+        bytes
+    }
+
     fn validate_metric(metric: &Metric) -> Result<()> {
         match metric {
             Metric::Levenshtein(_) | Metric::DamerauLevenshtein(_) | Metric::Hamming(_) => Ok(()),

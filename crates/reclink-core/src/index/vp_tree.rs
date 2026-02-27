@@ -204,6 +204,34 @@ impl VpTree {
         self.size == 0
     }
 
+    /// Estimates the heap memory usage of this tree in bytes.
+    #[must_use]
+    pub fn memory_usage(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>();
+        if let Some(root) = &self.root {
+            bytes += Self::node_memory_usage(root);
+        }
+        // Buffer entries
+        for (s, _) in &self.buffer {
+            bytes += std::mem::size_of::<(String, usize)>() + s.capacity();
+        }
+        // deleted set overhead
+        bytes += self.deleted.capacity() * std::mem::size_of::<usize>();
+        bytes
+    }
+
+    fn node_memory_usage(node: &VpNode) -> usize {
+        let mut bytes = std::mem::size_of::<VpNode>();
+        bytes += node.value.capacity();
+        if let Some(left) = &node.left {
+            bytes += Self::node_memory_usage(left);
+        }
+        if let Some(right) = &node.right {
+            bytes += Self::node_memory_usage(right);
+        }
+        bytes
+    }
+
     fn dissimilarity(metric: &Metric, a: &str, b: &str) -> f64 {
         1.0 - metric.similarity(a, b)
     }

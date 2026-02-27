@@ -53,8 +53,71 @@ pub use token_sort::TokenSort;
 pub use weighted_levenshtein::WeightedLevenshtein;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock, RwLock};
+
+use ahash::AHashMap;
 
 use crate::error::{ReclinkError, Result};
+
+/// A custom metric function: `(a, b) -> similarity in [0, 1]`.
+pub type CustomMetricFn = Arc<dyn Fn(&str, &str) -> f64 + Send + Sync>;
+
+/// Global registry for custom user-defined metrics.
+static CUSTOM_METRICS: LazyLock<RwLock<AHashMap<String, CustomMetricFn>>> =
+    LazyLock::new(|| RwLock::new(AHashMap::new()));
+
+/// Register a custom metric function under the given name.
+///
+/// # Errors
+///
+/// Returns an error if the name conflicts with a built-in metric.
+pub fn register_custom_metric(name: &str, func: CustomMetricFn) -> Result<()> {
+    if is_builtin_metric(name) {
+        return Err(ReclinkError::InvalidConfig(format!(
+            "cannot override built-in metric: `{name}`"
+        )));
+    }
+    let mut registry = CUSTOM_METRICS.write().unwrap();
+    registry.insert(name.to_string(), func);
+    Ok(())
+}
+
+/// Unregister a custom metric. Returns `true` if it existed.
+pub fn unregister_custom_metric(name: &str) -> bool {
+    let mut registry = CUSTOM_METRICS.write().unwrap();
+    registry.remove(name).is_some()
+}
+
+/// List all registered custom metric names.
+#[must_use]
+pub fn list_custom_metrics() -> Vec<String> {
+    let registry = CUSTOM_METRICS.read().unwrap();
+    registry.keys().cloned().collect()
+}
+
+/// Returns `true` if the name is a built-in metric.
+fn is_builtin_metric(name: &str) -> bool {
+    matches!(
+        name,
+        "levenshtein"
+            | "damerau_levenshtein"
+            | "hamming"
+            | "jaro"
+            | "jaro_winkler"
+            | "cosine"
+            | "jaccard"
+            | "sorensen_dice"
+            | "weighted_levenshtein"
+            | "token_sort"
+            | "token_set"
+            | "partial_ratio"
+            | "lcs"
+            | "longest_common_substring"
+            | "ngram_similarity"
+            | "smith_waterman"
+            | "phonetic_hybrid"
+    )
+}
 
 /// Default maximum string length (in characters) for metric computation.
 /// Strings longer than this limit return 0.0 similarity / max distance.
@@ -129,7 +192,10 @@ pub trait SimilarityMetric {
 }
 
 /// Enum dispatch for all available metrics, avoiding vtable overhead in hot loops.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// The `Custom` variant allows user-defined metrics via the global registry.
+/// Custom metrics cannot be serialized to JSON.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Metric {
     /// Levenshtein edit distance.
     Levenshtein(Levenshtein),
@@ -165,6 +231,43 @@ pub enum Metric {
     SmithWaterman(SmithWaterman),
     /// Phonetic + edit distance hybrid.
     PhoneticHybrid(PhoneticHybrid),
+    /// User-defined custom metric (not serializable).
+    #[serde(skip)]
+    Custom {
+        /// Name of the custom metric.
+        name: String,
+        /// The similarity function.
+        func: CustomMetricFn,
+    },
+}
+
+impl std::fmt::Debug for Metric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Metric::Levenshtein(m) => f.debug_tuple("Levenshtein").field(m).finish(),
+            Metric::DamerauLevenshtein(m) => f.debug_tuple("DamerauLevenshtein").field(m).finish(),
+            Metric::Hamming(m) => f.debug_tuple("Hamming").field(m).finish(),
+            Metric::Jaro(m) => f.debug_tuple("Jaro").field(m).finish(),
+            Metric::JaroWinkler(m) => f.debug_tuple("JaroWinkler").field(m).finish(),
+            Metric::Cosine(m) => f.debug_tuple("Cosine").field(m).finish(),
+            Metric::Jaccard(m) => f.debug_tuple("Jaccard").field(m).finish(),
+            Metric::SorensenDice(m) => f.debug_tuple("SorensenDice").field(m).finish(),
+            Metric::WeightedLevenshtein(m) => {
+                f.debug_tuple("WeightedLevenshtein").field(m).finish()
+            }
+            Metric::TokenSort(m) => f.debug_tuple("TokenSort").field(m).finish(),
+            Metric::TokenSet(m) => f.debug_tuple("TokenSet").field(m).finish(),
+            Metric::PartialRatio(m) => f.debug_tuple("PartialRatio").field(m).finish(),
+            Metric::Lcs(m) => f.debug_tuple("Lcs").field(m).finish(),
+            Metric::LongestCommonSubstring(m) => {
+                f.debug_tuple("LongestCommonSubstring").field(m).finish()
+            }
+            Metric::NgramSimilarity(m) => f.debug_tuple("NgramSimilarity").field(m).finish(),
+            Metric::SmithWaterman(m) => f.debug_tuple("SmithWaterman").field(m).finish(),
+            Metric::PhoneticHybrid(m) => f.debug_tuple("PhoneticHybrid").field(m).finish(),
+            Metric::Custom { name, .. } => f.debug_struct("Custom").field("name", name).finish(),
+        }
+    }
 }
 
 impl Metric {
@@ -195,6 +298,7 @@ impl Metric {
             Metric::NgramSimilarity(m) => m.similarity(a, b),
             Metric::SmithWaterman(m) => m.similarity(a, b),
             Metric::PhoneticHybrid(m) => m.similarity(a, b),
+            Metric::Custom { func, .. } => func(a, b),
         }
     }
 }
@@ -231,18 +335,58 @@ pub fn metric_from_name(name: &str) -> Result<Metric> {
         "ngram_similarity" => Ok(Metric::NgramSimilarity(NgramSimilarity::default())),
         "smith_waterman" => Ok(Metric::SmithWaterman(SmithWaterman::default())),
         "phonetic_hybrid" => Ok(Metric::PhoneticHybrid(PhoneticHybrid::default())),
-        _ => Err(ReclinkError::InvalidConfig(format!(
-            "unknown metric: `{name}`. Expected one of: levenshtein, damerau_levenshtein, \
-             hamming, jaro, jaro_winkler, cosine, jaccard, sorensen_dice, \
-             weighted_levenshtein, token_sort, token_set, partial_ratio, lcs, \
-             longest_common_substring, ngram_similarity, smith_waterman, phonetic_hybrid"
-        ))),
+        _ => {
+            // Fall through to custom metric registry
+            let registry = CUSTOM_METRICS.read().unwrap();
+            if let Some(func) = registry.get(name) {
+                Ok(Metric::Custom {
+                    name: name.to_string(),
+                    func: Arc::clone(func),
+                })
+            } else {
+                Err(ReclinkError::InvalidConfig(format!(
+                    "unknown metric: `{name}`. Expected one of: levenshtein, \
+                     damerau_levenshtein, hamming, jaro, jaro_winkler, cosine, jaccard, \
+                     sorensen_dice, weighted_levenshtein, token_sort, token_set, \
+                     partial_ratio, lcs, longest_common_substring, ngram_similarity, \
+                     smith_waterman, phonetic_hybrid"
+                )))
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_metric_registration() {
+        let name = "test_exact_match";
+        let func: CustomMetricFn = Arc::new(|a, b| if a == b { 1.0 } else { 0.0 });
+        register_custom_metric(name, func).unwrap();
+
+        // Lookup via metric_from_name
+        let m = metric_from_name(name).unwrap();
+        assert!((m.similarity("abc", "abc") - 1.0).abs() < f64::EPSILON);
+        assert!((m.similarity("abc", "xyz") - 0.0).abs() < f64::EPSILON);
+
+        // Listed
+        let names = list_custom_metrics();
+        assert!(names.contains(&name.to_string()));
+
+        // Unregister
+        assert!(unregister_custom_metric(name));
+        assert!(!unregister_custom_metric(name)); // already gone
+        assert!(metric_from_name(name).is_err());
+    }
+
+    #[test]
+    fn cannot_override_builtin() {
+        let func: CustomMetricFn = Arc::new(|_, _| 0.5);
+        let result = register_custom_metric("jaro_winkler", func);
+        assert!(result.is_err());
+    }
 
     // All max-string-length tests are in one function to avoid global-state
     // race conditions when cargo runs tests in parallel.

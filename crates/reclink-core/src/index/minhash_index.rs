@@ -204,6 +204,30 @@ impl MinHashIndex {
         self.len() == 0
     }
 
+    /// Estimates the heap memory usage of this index in bytes.
+    #[must_use]
+    pub fn memory_usage(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>();
+        // strings
+        for s in &self.strings {
+            bytes += std::mem::size_of::<String>() + s.capacity();
+        }
+        // signatures: each is a Vec<u64>
+        for sig in &self.signatures {
+            bytes += std::mem::size_of::<Vec<u64>>() + sig.capacity() * std::mem::size_of::<u64>();
+        }
+        // band_buckets: (usize, Vec<u64>) -> Vec<usize>
+        for ((_, key), postings) in &self.band_buckets {
+            bytes += std::mem::size_of::<usize>();
+            bytes += std::mem::size_of::<Vec<u64>>() + key.capacity() * std::mem::size_of::<u64>();
+            bytes += std::mem::size_of::<Vec<usize>>()
+                + postings.capacity() * std::mem::size_of::<usize>();
+        }
+        // deleted set
+        bytes += self.deleted.capacity() * std::mem::size_of::<usize>();
+        bytes
+    }
+
     /// Rebuild the band buckets (e.g. after deserialization).
     pub fn rebuild_buckets(&mut self) {
         self.band_buckets.clear();
