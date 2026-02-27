@@ -6,18 +6,20 @@ Blazing-fast fuzzy matching and record linkage library powered by Rust.
 
 - **Rust core with Python bindings** via PyO3 — no pure-Python bottlenecks
 - **20+ string similarity metrics** implemented from scratch (edit distance, token-based, subsequence, alignment, and more)
-- **6 phonetic algorithms** — Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone, Cologne
+- **7 phonetic algorithms** — Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone, Cologne, Beider-Morse
 - **Domain preprocessors** — `clean_name`, `clean_address`, `clean_company`, email/URL normalization, synonym expansion
 - **Scoring presets** — pre-tuned `CompositeScorer` configs for name matching, address matching, and general-purpose use
-- **Index structures** — BK-tree, VP-tree, and N-gram index for sub-linear nearest-neighbor search
+- **Index structures** — BK-tree, VP-tree, N-gram index, and memory-mapped N-gram index for sub-linear nearest-neighbor search
 - **Streaming matcher** — lazy/chunked matching over iterators without materializing the full dataset
 - **TF-IDF matcher** — corpus-aware similarity scoring
 - **Full record linkage pipeline** — blocking, comparison, classification, and clustering
-- **8 blocking strategies** — exact, phonetic, sorted neighborhood, q-gram, LSH, canopy, numeric, date
+- **9 blocking strategies** — exact, phonetic, sorted neighborhood, q-gram, LSH, canopy, trie, numeric, date
 - **Fellegi-Sunter with EM estimation** — unsupervised probabilistic matching out of the box
 - **DataFrame integration** — pandas and polars accessors for fuzzy merge, phonetic encoding, and deduplication
+- **Native Polars plugin** — zero-GIL-overhead expressions for similarity, phonetic encoding, and matching
+- **Arrow-friendly batch API** — `cdist_arrow`, `pairwise_similarity`, `match_best_arrow`, `match_batch_arrow`, `phonetic_batch_arrow`
 - **Parallel computation** — Rayon-powered `cdist` and pipeline execution
-- **Evaluation & export** — precision/recall/F1, CSV/JSON export
+- **Evaluation & export** — precision/recall/F1, ROC/AUC, CSV/JSON export
 
 ## Installation
 
@@ -180,15 +182,18 @@ match_batch("hello", ["hallo", "world", "help"], threshold=0.5, limit=2)
 | `nysiis` | `(s)` | `str` — NYSIIS code (up to 6 characters) |
 | `caverphone` | `(s)` | `str` — Caverphone code |
 | `cologne_phonetic` | `(s)` | `str` — Cologne phonetic code |
+| `beider_morse` | `(s, ashkenazi=False)` | `str` — Beider-Morse phonetic code(s), `\|`-separated variants |
 
 ```python
-from reclink import soundex, double_metaphone, caverphone, cologne_phonetic
+from reclink import soundex, double_metaphone, caverphone, cologne_phonetic, beider_morse
 
 soundex("Smith")           # "S530"
 soundex("Smyth")           # "S530"
 double_metaphone("John")   # ("JN", "AN")
 caverphone("Thompson")     # "TMSN111111"
 cologne_phonetic("Müller") # "657"
+beider_morse("Schwartz")   # "svarts|zvarts|..."
+beider_morse("Goldstein", ashkenazi=True)  # Ashkenazi-specific rules
 ```
 
 ## Preprocessing
@@ -385,6 +390,51 @@ index.remove(idx)              # returns bool
 idx in index                   # __contains__
 ```
 
+### Memory-mapped N-gram index
+
+For datasets larger than RAM — build once, query from disk:
+
+```python
+from reclink import MmapNgramIndex
+
+# Build and save to disk
+MmapNgramIndex.build_and_save(["smith", "smyth", "john", "jane"], n=2, path="names.mmap")
+
+# Open and query without loading into memory
+index = MmapNgramIndex.open("names.mmap")
+index.search("smith", threshold=2)    # minimum shared bigrams
+index.search_top_k("smith", k=2)
+len(index)                            # number of indexed strings
+```
+
+## Arrow Batch Operations
+
+Array-friendly functions for DataFrame workflows — returns plain lists instead of numpy arrays, minimizing Python/Rust round-trips:
+
+```python
+from reclink import cdist_arrow, pairwise_similarity, match_best_arrow, match_batch_arrow, phonetic_batch_arrow
+
+# All-pairs similarity matrix (flat row-major list)
+scores = cdist_arrow(["Jon", "Jane"], ["John", "Janet"], scorer="jaro_winkler")
+# [0.93..., 0.78..., 0.0, 0.93...]  (2 × 2 = 4 values)
+
+# Element-wise similarity (both lists must have equal length)
+scores = pairwise_similarity(["Jon", "Jane"], ["John", "Janet"])
+# [0.93..., 0.93...]
+
+# Best match for a query
+match_best_arrow("Jon", ["John", "Jane", "James"], scorer="jaro_winkler", threshold=0.5)
+# ("John", 0.93..., 0)
+
+# All matches above threshold, sorted by score
+match_batch_arrow("Jon", ["John", "Jane", "James"], threshold=0.5, limit=2)
+# [("John", 0.93..., 0), ("James", 0.79..., 2)]
+
+# Batch phonetic encoding
+phonetic_batch_arrow(["Smith", "Smyth", "Jones"], algorithm="soundex")
+# ["S530", "S530", "J520"]
+```
+
 ## Streaming
 
 Match against large or unbounded candidate sets lazily:
@@ -439,6 +489,7 @@ Blocking reduces the number of candidate pairs by grouping records that are like
 | `block_qgram(field, q=3, threshold=1)` | Minimum shared q-gram overlap |
 | `block_lsh(field, num_hashes=100, num_bands=20)` | Locality-Sensitive Hashing (MinHash + banding) |
 | `block_canopy(field, t_tight=0.9, t_loose=0.5, metric="jaro_winkler")` | Canopy clustering with two thresholds |
+| `block_trie(field, min_prefix_len=2, max_frequency=100)` | Trie-based prefix grouping with frequency pruning |
 | `block_numeric(field, bucket_size=5.0)` | Numeric bucket ranges |
 | `block_date(field, resolution="year")` | Date truncation (year/month/day) |
 
@@ -547,6 +598,29 @@ s.reclink.deduplicate(threshold=0.85)
 left = pl.DataFrame({"firm": ["ACME", "globex corp"]})
 right = pl.DataFrame({"company": ["Acme Inc", "Globex"], "revenue": [100, 200]})
 left.reclink.fuzzy_merge(right, left_on="firm", right_on="company", threshold=0.6)
+```
+
+### Native Polars Plugin
+
+Zero-GIL-overhead expressions that operate directly on Arrow arrays (requires building with `--features polars-plugin`):
+
+```python
+import polars as pl
+from reclink._polars_plugin import similarity, phonetic, match_best
+
+df = pl.DataFrame({"a": ["John", "Jane"], "b": ["Jon", "Janet"]})
+
+# Pairwise similarity between two columns
+df.with_columns(similarity(pl.col("a"), pl.col("b"), scorer="jaro_winkler").alias("score"))
+
+# Phonetic encoding
+df.with_columns(phonetic(pl.col("a"), algorithm="soundex").alias("code"))
+
+# Best match from a list of candidates
+df.with_columns(
+    match_best(pl.col("a"), ["John Smith", "Jane Doe"], scorer="jaro_winkler", threshold=0.5)
+    .alias("best_match")
+)
 ```
 
 ## Evaluation
