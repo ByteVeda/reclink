@@ -34,6 +34,67 @@ class ReclinkPipeline:
     def __init__(self, inner: PyPipeline) -> None:
         self._inner = inner
 
+    def with_profiling(self, enabled: bool = True) -> ReclinkPipeline:
+        """Enable or disable per-stage profiling.
+
+        When enabled, ``profiling_stats`` is populated after each
+        ``dedup()`` or ``link()`` call with per-stage timing in
+        nanoseconds.
+
+        Parameters
+        ----------
+        enabled : bool
+            Whether to enable profiling.
+        """
+        self._inner.with_profiling(enabled)
+        return self
+
+    @property
+    def profiling_stats(self) -> dict[str, int]:
+        """Per-stage timing from the last ``dedup()`` or ``link()`` call.
+
+        Returns a dict mapping stage names (e.g. ``"blocking"``,
+        ``"comparison"``, ``"classification"``) to elapsed nanoseconds.
+        Empty if profiling is not enabled.
+        """
+        return self._inner.get_profiling_stats()
+
+    def to_json(self) -> str:
+        """Serialize the pipeline configuration to a JSON string."""
+        return self._inner.to_json()
+
+    @staticmethod
+    def from_json(json: str) -> ReclinkPipeline:
+        """Deserialize a pipeline from a JSON string."""
+        inner = PyPipeline.from_json(json)
+        return ReclinkPipeline(inner)
+
+    def to_file(self, path: str) -> None:
+        """Serialize the pipeline configuration to a JSON file.
+
+        Parameters
+        ----------
+        path : str
+            File path to write the JSON configuration.
+        """
+        from pathlib import Path
+
+        Path(path).write_text(self.to_json(), encoding="utf-8")
+
+    @staticmethod
+    def from_file(path: str) -> ReclinkPipeline:
+        """Deserialize a pipeline from a JSON file.
+
+        Parameters
+        ----------
+        path : str
+            File path to read the JSON configuration from.
+        """
+        from pathlib import Path
+
+        json = Path(path).read_text(encoding="utf-8")
+        return ReclinkPipeline.from_json(json)
+
     @staticmethod
     def builder() -> PipelineBuilder:
         """Create a new pipeline builder."""

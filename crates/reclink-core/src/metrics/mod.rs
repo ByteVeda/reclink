@@ -6,6 +6,7 @@
 //!
 //! All algorithms are implemented from scratch with buffer reuse for batch operations.
 
+pub mod alignment;
 pub mod batch;
 pub mod composite;
 pub mod cosine;

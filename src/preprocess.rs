@@ -153,6 +153,28 @@ fn synonym_expand(s: &str, table: std::collections::HashMap<String, String>) -> 
     preprocess::expand_abbreviations(s, &ahash_table)
 }
 
+/// Transliterate Cyrillic characters to Latin equivalents.
+///
+/// Non-Cyrillic characters (including Latin) are passed through unchanged.
+#[pyfunction]
+fn transliterate_cyrillic(s: &str) -> String {
+    reclink_core::preprocess::transliterate::transliterate(
+        s,
+        reclink_core::preprocess::transliterate::Script::Cyrillic,
+    )
+}
+
+/// Transliterate Greek characters to Latin equivalents.
+///
+/// Non-Greek characters (including Latin) are passed through unchanged.
+#[pyfunction]
+fn transliterate_greek(s: &str) -> String {
+    reclink_core::preprocess::transliterate::transliterate(
+        s,
+        reclink_core::preprocess::transliterate::Script::Greek,
+    )
+}
+
 /// Apply a chain of preprocessing operations to a batch of strings in parallel.
 #[pyfunction]
 fn preprocess_batch(strings: Vec<String>, operations: Vec<String>) -> PyResult<Vec<String>> {
@@ -202,6 +224,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(normalize_email, m)?)?;
     m.add_function(wrap_pyfunction!(normalize_url, m)?)?;
     m.add_function(wrap_pyfunction!(synonym_expand, m)?)?;
+    m.add_function(wrap_pyfunction!(transliterate_cyrillic, m)?)?;
+    m.add_function(wrap_pyfunction!(transliterate_greek, m)?)?;
     m.add_function(wrap_pyfunction!(preprocess_batch, m)?)?;
     m.add_function(wrap_pyfunction!(ngram_tokenize_batch, m)?)?;
     m.add_function(wrap_pyfunction!(whitespace_tokenize_batch, m)?)?;

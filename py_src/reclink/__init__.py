@@ -5,6 +5,7 @@ Built on Rust via PyO3 for maximum performance.
 
 import contextlib
 
+from reclink import benchmark as benchmark
 from reclink import evaluation as evaluation
 from reclink import export as export
 from reclink import metrics as metrics
@@ -24,6 +25,9 @@ from reclink._core import (
 )
 from reclink._core import (
     PyMatchResult as MatchResult,
+)
+from reclink._core import (
+    PyMinHashIndex as MinHashIndex,
 )
 from reclink._core import (
     PyMmapNgramIndex as MmapNgramIndex,
@@ -63,6 +67,7 @@ from reclink._core import (
     damerau_levenshtein,
     damerau_levenshtein_similarity,
     damerau_levenshtein_threshold,
+    detect_language,
     double_metaphone,
     # Preprocessing
     expand_abbreviations,
@@ -78,6 +83,7 @@ from reclink._core import (
     lcs_similarity,
     # String metrics
     levenshtein,
+    levenshtein_align,
     levenshtein_similarity,
     levenshtein_threshold,
     longest_common_substring_length,
@@ -116,6 +122,9 @@ from reclink._core import (
     synonym_expand,
     token_set_ratio,
     token_sort_ratio,
+    # Transliteration
+    transliterate_cyrillic,
+    transliterate_greek,
     weighted_levenshtein,
     weighted_levenshtein_similarity,
     whitespace_tokenize,
@@ -152,20 +161,19 @@ __all__ = [
     "CompositeScorer",
     "EmResult",
     "MatchResult",
+    "MinHashIndex",
     "MmapNgramIndex",
     "NgramIndex",
     "Pipeline",
-    # Pipeline
     "Record",
     "StreamingMatcher",
     "TfIdfMatcher",
     "VpTree",
     "beider_morse",
-    # Phonetic
+    "benchmark",
     "caverphone",
     "cdist",
     "cdist_arrow",
-    # Domain preprocessors
     "clean_address",
     "clean_company",
     "clean_name",
@@ -174,13 +182,13 @@ __all__ = [
     "damerau_levenshtein",
     "damerau_levenshtein_similarity",
     "damerau_levenshtein_threshold",
+    "detect_language",
     "double_metaphone",
     "estimate_fellegi_sunter",
     "evaluation",
     "expand_abbreviations",
     "explain",
     "export",
-    # Preprocessing
     "fold_case",
     "get_max_string_length",
     "hamming",
@@ -190,22 +198,19 @@ __all__ = [
     "jaro_winkler",
     "lcs_length",
     "lcs_similarity",
-    # Metrics
     "levenshtein",
+    "levenshtein_align",
     "levenshtein_similarity",
     "levenshtein_threshold",
     "longest_common_substring_length",
     "longest_common_substring_similarity",
-    # Batch matching
     "match_batch",
     "match_batch_arrow",
     "match_best",
     "match_best_arrow",
     "metaphone",
-    # Submodules
     "metrics",
     "ngram_similarity",
-    # Tokenization & Unicode normalization
     "ngram_tokenize",
     "ngram_tokenize_batch",
     "normalize_email",
@@ -219,7 +224,6 @@ __all__ = [
     "phonetic_batch_arrow",
     "phonetic_hybrid",
     "pipeline",
-    # Batch preprocessing
     "preprocess_batch",
     "presets",
     "regex_replace",
@@ -236,6 +240,8 @@ __all__ = [
     "synonym_expand",
     "token_set_ratio",
     "token_sort_ratio",
+    "transliterate_cyrillic",
+    "transliterate_greek",
     "utils",
     "weighted_levenshtein",
     "weighted_levenshtein_similarity",

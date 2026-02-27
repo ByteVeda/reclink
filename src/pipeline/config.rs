@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PyBlockerConfig {
     Exact {
         field: String,
@@ -42,14 +42,14 @@ pub enum PyBlockerConfig {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PyClusterConfig {
     None,
     ConnectedComponents,
     Hierarchical { linkage: String, threshold: f64 },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PyComparatorConfig {
     String { field: String, metric: String },
     Exact { field: String },
@@ -58,7 +58,7 @@ pub enum PyComparatorConfig {
     Phonetic { field: String, algorithm: String },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PyClassifierConfig {
     Threshold {
         threshold: f64,
@@ -87,4 +87,17 @@ pub enum PyClassifierConfig {
         upper: f64,
         lower: f64,
     },
+}
+
+/// Complete serializable configuration for a pipeline.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PipelineConfig {
+    pub blockers: Vec<PyBlockerConfig>,
+    pub comparators: Vec<PyComparatorConfig>,
+    pub classifier: Option<PyClassifierConfig>,
+    pub cluster: PyClusterConfig,
+    pub preprocess_lowercase: Vec<String>,
+    pub preprocess_ops: std::collections::BTreeMap<String, Vec<String>>,
+    pub numeric_fields: Vec<String>,
+    pub date_fields: Vec<String>,
 }

@@ -4,12 +4,15 @@ pub mod helpers;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::time::Instant;
 
 use pyo3::prelude::*;
 use reclink_core::classify::Classifier;
 use reclink_core::record::MatchClass;
 
-use config::{PyBlockerConfig, PyClassifierConfig, PyClusterConfig, PyComparatorConfig};
+use config::{
+    PipelineConfig, PyBlockerConfig, PyClassifierConfig, PyClusterConfig, PyComparatorConfig,
+};
 use helpers::{
     cluster_matches, compare_pairs, generate_dedup_candidates, generate_link_candidates,
 };
@@ -152,6 +155,8 @@ pub struct PyPipeline {
     pub preprocess_ops: ahash::AHashMap<String, Vec<String>>,
     pub numeric_fields: ahash::AHashSet<String>,
     pub date_fields: ahash::AHashSet<String>,
+    profiling: bool,
+    profiling_stats: ahash::AHashMap<String, u64>,
 }
 
 #[pymethods]
@@ -167,7 +172,24 @@ impl PyPipeline {
             preprocess_ops: ahash::AHashMap::new(),
             numeric_fields: ahash::AHashSet::new(),
             date_fields: ahash::AHashSet::new(),
+            profiling: false,
+            profiling_stats: ahash::AHashMap::new(),
         }
+    }
+
+    /// Enable or disable profiling.
+    fn with_profiling(&mut self, enabled: bool) {
+        self.profiling = enabled;
+    }
+
+    /// Get the profiling stats from the last run.
+    ///
+    /// Returns a dict mapping stage names to elapsed nanoseconds.
+    fn get_profiling_stats(&self) -> std::collections::HashMap<String, u64> {
+        self.profiling_stats
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect()
     }
 
     fn preprocess_lowercase(&mut self, fields: Vec<String>) {
@@ -342,9 +364,60 @@ impl PyPipeline {
         });
     }
 
+    /// Serialize the pipeline configuration to a JSON string.
+    fn to_json(&self) -> PyResult<String> {
+        let mut preprocess_ops = std::collections::BTreeMap::new();
+        for (k, v) in &self.preprocess_ops {
+            preprocess_ops.insert(k.clone(), v.clone());
+        }
+        let mut numeric_fields: Vec<String> = self.numeric_fields.iter().cloned().collect();
+        numeric_fields.sort();
+        let mut date_fields: Vec<String> = self.date_fields.iter().cloned().collect();
+        date_fields.sort();
+
+        let config = PipelineConfig {
+            blockers: self.blockers.clone(),
+            comparators: self.comparators.clone(),
+            classifier: self.classifier.clone(),
+            cluster: self.cluster.clone(),
+            preprocess_lowercase: self.preprocess_lowercase.clone(),
+            preprocess_ops,
+            numeric_fields,
+            date_fields,
+        };
+        serde_json::to_string_pretty(&config)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    }
+
+    /// Deserialize a pipeline from a JSON string.
+    #[staticmethod]
+    fn from_json(json: &str) -> PyResult<Self> {
+        let config: PipelineConfig = serde_json::from_str(json)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self {
+            blockers: config.blockers,
+            comparators: config.comparators,
+            classifier: config.classifier,
+            cluster: config.cluster,
+            preprocess_lowercase: config.preprocess_lowercase,
+            preprocess_ops: config.preprocess_ops.into_iter().collect(),
+            numeric_fields: config.numeric_fields.into_iter().collect(),
+            date_fields: config.date_fields.into_iter().collect(),
+            profiling: false,
+            profiling_stats: ahash::AHashMap::new(),
+        })
+    }
+
     /// Run deduplication on a list of records.
-    fn dedup(&self, records: Vec<PyRef<PyRecord>>) -> PyResult<Vec<PyMatchResult>> {
+    fn dedup(&mut self, records: Vec<PyRef<PyRecord>>) -> PyResult<Vec<PyMatchResult>> {
+        self.profiling_stats.clear();
+
+        let t0 = Instant::now();
         let batch = self.build_record_batch(&records)?;
+        if self.profiling {
+            self.profiling_stats
+                .insert("preprocess".into(), t0.elapsed().as_nanos() as u64);
+        }
 
         match &self.classifier {
             Some(PyClassifierConfig::FellegiSunterAuto {
@@ -352,29 +425,42 @@ impl PyPipeline {
                 convergence_threshold,
                 initial_p_match,
             }) => {
+                let max_iterations = *max_iterations;
+                let convergence_threshold = *convergence_threshold;
+                let initial_p_match = *initial_p_match;
+
                 let blockers = self.build_blockers()?;
                 let comparators = self.build_comparators()?;
 
-                // Generate candidates and comparison vectors
+                let t1 = Instant::now();
                 let candidates = generate_dedup_candidates(&blockers, &batch);
-                let vectors = compare_pairs(&comparators, &batch, &batch, &candidates);
+                if self.profiling {
+                    self.profiling_stats
+                        .insert("blocking".into(), t1.elapsed().as_nanos() as u64);
+                }
 
-                // Run EM to estimate parameters
+                let t2 = Instant::now();
+                let vectors = compare_pairs(&comparators, &batch, &batch, &candidates);
+                if self.profiling {
+                    self.profiling_stats
+                        .insert("comparison".into(), t2.elapsed().as_nanos() as u64);
+                }
+
+                let t3 = Instant::now();
                 let raw_vectors: Vec<Vec<f64>> = vectors.iter().map(|v| v.scores.clone()).collect();
                 let config = reclink_core::classify::EmConfig {
-                    max_iterations: *max_iterations,
-                    convergence_threshold: *convergence_threshold,
-                    initial_p_match: *initial_p_match,
+                    max_iterations,
+                    convergence_threshold,
+                    initial_p_match,
                 };
                 let em_result =
                     reclink_core::classify::estimate_fellegi_sunter(&raw_vectors, &config);
 
-                // Use EM results to classify
                 let classifier = reclink_core::classify::FellegiSunterClassifier::new(
                     em_result.m_probs,
                     em_result.u_probs,
-                    4.0,  // upper threshold
-                    -4.0, // lower threshold
+                    4.0,
+                    -4.0,
                 );
 
                 let matches: Vec<_> = vectors
@@ -385,6 +471,10 @@ impl PyPipeline {
                             || c.class == reclink_core::record::MatchClass::Possible
                     })
                     .collect();
+                if self.profiling {
+                    self.profiling_stats
+                        .insert("classification".into(), t3.elapsed().as_nanos() as u64);
+                }
 
                 Ok(matches
                     .into_iter()
@@ -398,8 +488,20 @@ impl PyPipeline {
                     .collect())
             }
             _ => {
+                let t1 = Instant::now();
                 let pipeline = self.build_pipeline()?;
+                if self.profiling {
+                    self.profiling_stats
+                        .insert("build".into(), t1.elapsed().as_nanos() as u64);
+                }
+
+                let t2 = Instant::now();
                 let matches = pipeline.dedup(&batch);
+                if self.profiling {
+                    self.profiling_stats
+                        .insert("dedup_total".into(), t2.elapsed().as_nanos() as u64);
+                }
+
                 Ok(matches
                     .into_iter()
                     .map(|m| PyMatchResult {
@@ -415,7 +517,7 @@ impl PyPipeline {
     }
 
     /// Run dedup and cluster, returning groups of record IDs.
-    fn dedup_cluster(&self, records: Vec<PyRef<PyRecord>>) -> PyResult<Vec<Vec<String>>> {
+    fn dedup_cluster(&mut self, records: Vec<PyRef<PyRecord>>) -> PyResult<Vec<Vec<String>>> {
         let batch = self.build_record_batch(&records)?;
 
         match &self.classifier {
@@ -484,7 +586,7 @@ impl PyPipeline {
 
     /// Run linkage between two sets of records.
     fn link(
-        &self,
+        &mut self,
         left: Vec<PyRef<PyRecord>>,
         right: Vec<PyRef<PyRecord>>,
     ) -> PyResult<Vec<PyMatchResult>> {

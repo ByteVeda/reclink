@@ -28,6 +28,24 @@ pub enum Language {
     Ashkenazi,
 }
 
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Language::Generic => "generic",
+            Language::English => "english",
+            Language::German => "german",
+            Language::French => "french",
+            Language::Spanish => "spanish",
+            Language::Italian => "italian",
+            Language::Portuguese => "portuguese",
+            Language::Polish => "polish",
+            Language::Russian => "russian",
+            Language::Ashkenazi => "ashkenazi",
+        };
+        write!(f, "{name}")
+    }
+}
+
 /// Detect the most likely language for a given name.
 ///
 /// Uses character patterns and common letter combinations to guess the

@@ -49,6 +49,15 @@ fn beider_morse(s: &str, ashkenazi: bool) -> String {
     encoder.encode(s)
 }
 
+/// Detect the most likely language/origin of a name.
+///
+/// Returns a string such as "english", "german", "french", "spanish",
+/// "italian", "portuguese", "polish", "russian", "ashkenazi", or "generic".
+#[pyfunction]
+fn detect_language(s: &str) -> String {
+    phonetic_mod::detect_language(s).to_string()
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(soundex, m)?)?;
     m.add_function(wrap_pyfunction!(metaphone, m)?)?;
@@ -57,5 +66,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(caverphone, m)?)?;
     m.add_function(wrap_pyfunction!(cologne_phonetic, m)?)?;
     m.add_function(wrap_pyfunction!(beider_morse, m)?)?;
+    m.add_function(wrap_pyfunction!(detect_language, m)?)?;
     Ok(())
 }

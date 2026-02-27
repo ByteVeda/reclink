@@ -6,6 +6,7 @@
 mod normalize;
 pub mod stop_words;
 mod tokenize;
+pub mod transliterate;
 
 pub use normalize::{
     clean_address, clean_company, clean_name, expand_abbreviations, fold_case, normalize_email,
@@ -56,6 +57,8 @@ pub enum PreprocessOp {
     SynonymExpand {
         table: ahash::AHashMap<String, String>,
     },
+    /// Transliterate from a non-Latin script to Latin characters.
+    Transliterate(transliterate::Script),
 }
 
 /// Applies a sequence of preprocessing operations to a string.
@@ -89,6 +92,7 @@ pub fn apply_ops(s: &str, ops: &[PreprocessOp]) -> Result<String> {
             PreprocessOp::NormalizeEmail => normalize_email(&result),
             PreprocessOp::NormalizeUrl => normalize_url(&result),
             PreprocessOp::SynonymExpand { table } => expand_abbreviations(&result, table),
+            PreprocessOp::Transliterate(script) => transliterate::transliterate(&result, *script),
         };
     }
     Ok(result)
