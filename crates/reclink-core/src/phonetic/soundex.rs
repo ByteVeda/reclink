@@ -4,7 +4,7 @@ use crate::phonetic::PhoneticEncoder;
 
 /// Soundex encodes a name into a letter followed by three digits,
 /// mapping similar-sounding consonants to the same digit.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Soundex;
 
 impl PhoneticEncoder for Soundex {

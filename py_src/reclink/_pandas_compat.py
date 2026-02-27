@@ -23,7 +23,7 @@ def results_to_dataframe(results: list[dict[str, Any]]) -> Any:
     ImportError
         If pandas is not installed.
     """
-    import pandas as pd  # type: ignore[import-untyped]
+    import pandas as pd
 
     return pd.DataFrame(results)
 

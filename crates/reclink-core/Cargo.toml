@@ -8,13 +8,14 @@ license = "MIT"
 [dependencies]
 rayon = "1.11"
 unicode-normalization = "0.1"
-ahash = "0.8"
+ahash = { version = "0.8", features = ["serde"] }
 thiserror = "2"
-serde = { version = "1", features = ["derive"], optional = true }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
 
 [features]
 default = []
-serde = ["dep:serde"]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

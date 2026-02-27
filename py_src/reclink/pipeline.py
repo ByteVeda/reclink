@@ -482,7 +482,7 @@ def _to_records(data: Any, id_column: str) -> list[PyRecord]:
 def _convert_output(results: list[dict[str, Any]], original_input: Any) -> Any:
     """Return results as the same container type as the input."""
     if hasattr(original_input, "iterrows"):  # pandas DataFrame
-        import pandas as pd  # type: ignore[import-untyped]
+        import pandas as pd
 
         return pd.DataFrame(results)
     if hasattr(original_input, "to_dicts"):  # polars DataFrame

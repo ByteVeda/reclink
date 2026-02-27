@@ -6,7 +6,7 @@ use crate::metrics::SimilarityMetric;
 
 /// Jaccard similarity computes the size of the intersection divided by
 /// the size of the union of two token sets.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Jaccard;
 
 impl SimilarityMetric for Jaccard {

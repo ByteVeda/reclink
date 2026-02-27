@@ -6,6 +6,12 @@ All algorithms are implemented in Rust for maximum performance.
 from __future__ import annotations
 
 from reclink._core import (
+    caverphone as _caverphone,
+)
+from reclink._core import (
+    cologne_phonetic as _cologne_phonetic,
+)
+from reclink._core import (
     double_metaphone as _double_metaphone,
 )
 from reclink._core import (
@@ -88,3 +94,35 @@ def nysiis(s: str) -> str:
         NYSIIS phonetic code (up to 6 characters).
     """
     return _nysiis(s)
+
+
+def caverphone(s: str) -> str:
+    """Compute the Caverphone 2 code for a string.
+
+    Parameters
+    ----------
+    s : str
+        Input string.
+
+    Returns
+    -------
+    str
+        10-character Caverphone 2 code.
+    """
+    return _caverphone(s)
+
+
+def cologne_phonetic(s: str) -> str:
+    """Compute the Cologne Phonetic (Kolner Phonetik) code for a string.
+
+    Parameters
+    ----------
+    s : str
+        Input string.
+
+    Returns
+    -------
+    str
+        Variable-length digit string.
+    """
+    return _cologne_phonetic(s)

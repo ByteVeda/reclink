@@ -6,7 +6,7 @@ use crate::metrics::SimilarityMetric;
 
 /// Cosine similarity computes the cosine of the angle between two n-gram
 /// frequency vectors derived from the input strings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Cosine {
     /// Size of character n-grams. Default: 2 (bigrams).
     pub n: usize,

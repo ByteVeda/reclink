@@ -7,7 +7,7 @@ use crate::phonetic::PhoneticEncoder;
 
 /// Double Metaphone produces primary and alternate phonetic codes,
 /// better handling non-English origins than standard Metaphone.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DoubleMetaphone;
 
 impl PhoneticEncoder for DoubleMetaphone {

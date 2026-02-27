@@ -5,7 +5,7 @@ use crate::metrics::SimilarityMetric;
 
 /// Jaro-Winkler similarity extends Jaro with a prefix bonus that gives
 /// higher scores to strings sharing a common prefix.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JaroWinkler {
     /// Scaling factor for common prefix bonus. Default: 0.1. Must be <= 0.25.
     pub prefix_weight: f64,
