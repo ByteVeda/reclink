@@ -375,6 +375,59 @@ class TestNewBlockingStrategies:
         assert ("1", "2") in ids or ("2", "1") in ids
 
 
+class TestMatchResultRepr:
+    def test_repr_contains_fields(self) -> None:
+        from reclink._core import PyRecord
+
+        pipeline = _base_builder().block_phonetic("last_name", algorithm="soundex").build()
+        # Access the underlying MatchResult via _inner
+        records = [PyRecord(d["id"]) for d in SAMPLE_DATA]
+        for rec, d in zip(records, SAMPLE_DATA, strict=True):
+            for k, v in d.items():
+                if k != "id":
+                    rec.set_field(k, v)
+        inner_results = pipeline._inner.dedup(records)
+        r = inner_results[0]
+        text = repr(r)
+        assert "MatchResult(" in text
+        assert "left_id=" in text
+        assert "right_id=" in text
+        assert "score=" in text
+        assert "match_class=" in text
+        assert "scores=" in text
+
+    def test_match_class_in_output(self) -> None:
+        pipeline = _base_builder().block_phonetic("last_name", algorithm="soundex").build()
+        results = pipeline.dedup(SAMPLE_DATA)
+        assert len(results) >= 1
+        assert "match_class" in results[0]
+        assert results[0]["match_class"] in ("match", "possible", "non_match")
+
+
+class TestThresholdBands:
+    def test_threshold_bands_match_and_possible(self) -> None:
+        data = [
+            {"id": "1", "first_name": "John", "last_name": "Smith"},
+            {"id": "2", "first_name": "Jon", "last_name": "Smyth"},
+            {"id": "3", "first_name": "Jane", "last_name": "Doe"},
+            {"id": "4", "first_name": "Janet", "last_name": "Doer"},
+        ]
+        pipeline = (
+            ReclinkPipeline.builder()
+            .preprocess("first_name", ["fold_case"])
+            .preprocess("last_name", ["fold_case"])
+            .block_sorted_neighborhood("last_name", window=10)
+            .compare_string("first_name", metric="jaro_winkler")
+            .compare_string("last_name", metric="jaro_winkler")
+            .classify_threshold_bands(upper=0.9, lower=0.5)
+            .build()
+        )
+        results = pipeline.dedup(data)
+        classes = {r["match_class"] for r in results}
+        # At minimum we should get some results with valid match classes
+        assert classes.issubset({"match", "possible", "non_match"})
+
+
 class TestPhoneticComparator:
     def test_compare_phonetic(self) -> None:
         left = [

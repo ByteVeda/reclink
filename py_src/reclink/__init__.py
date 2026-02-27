@@ -12,6 +12,7 @@ from reclink import phonetic as phonetic
 from reclink import pipeline as pipeline
 from reclink import presets as presets
 from reclink import streaming as streaming
+from reclink import utils as utils
 from reclink._core import (
     PyBkTree as BkTree,
 )
@@ -23,6 +24,9 @@ from reclink._core import (
 )
 from reclink._core import (
     PyMatchResult as MatchResult,
+)
+from reclink._core import (
+    PyMmapNgramIndex as MmapNgramIndex,
 )
 from reclink._core import (
     PyNgramIndex as NgramIndex,
@@ -44,9 +48,12 @@ from reclink._core import (
     PyVpTree as VpTree,
 )
 from reclink._core import (
+    beider_morse,
     # Phonetic
     caverphone,
     cdist,
+    # Arrow-friendly batch operations
+    cdist_arrow,
     # Domain preprocessors
     clean_address,
     clean_company,
@@ -61,6 +68,7 @@ from reclink._core import (
     expand_abbreviations,
     explain,
     fold_case,
+    get_max_string_length,
     hamming,
     hamming_similarity,
     jaccard,
@@ -76,7 +84,9 @@ from reclink._core import (
     longest_common_substring_similarity,
     # Batch matching
     match_batch,
+    match_batch_arrow,
     match_best,
+    match_best_arrow,
     metaphone,
     # Tokenization & Unicode normalization
     ngram_similarity,
@@ -87,12 +97,15 @@ from reclink._core import (
     normalize_url,
     normalize_whitespace,
     nysiis,
+    pairwise_similarity,
     partial_ratio,
+    phonetic_batch_arrow,
     phonetic_hybrid,
     # Batch preprocessing
     preprocess_batch,
     regex_replace,
     remove_stop_words,
+    set_max_string_length,
     smith_waterman,
     smith_waterman_similarity,
     sorensen_dice,
@@ -123,7 +136,10 @@ def _register_pandas_accessor() -> None:
 
 def _register_polars_accessor() -> None:
     with contextlib.suppress(ImportError):
-        from reclink._polars_accessor import ReclinkNamespace  # noqa: F401
+        from reclink._polars_accessor import (  # noqa: F401
+            ReclinkDataFrameNamespace,
+            ReclinkNamespace,
+        )
 
 
 _register_pandas_accessor()
@@ -136,6 +152,7 @@ __all__ = [
     "CompositeScorer",
     "EmResult",
     "MatchResult",
+    "MmapNgramIndex",
     "NgramIndex",
     "Pipeline",
     # Pipeline
@@ -143,9 +160,11 @@ __all__ = [
     "StreamingMatcher",
     "TfIdfMatcher",
     "VpTree",
+    "beider_morse",
     # Phonetic
     "caverphone",
     "cdist",
+    "cdist_arrow",
     # Domain preprocessors
     "clean_address",
     "clean_company",
@@ -163,6 +182,7 @@ __all__ = [
     "export",
     # Preprocessing
     "fold_case",
+    "get_max_string_length",
     "hamming",
     "hamming_similarity",
     "jaccard",
@@ -178,7 +198,9 @@ __all__ = [
     "longest_common_substring_similarity",
     # Batch matching
     "match_batch",
+    "match_batch_arrow",
     "match_best",
+    "match_best_arrow",
     "metaphone",
     # Submodules
     "metrics",
@@ -191,8 +213,10 @@ __all__ = [
     "normalize_url",
     "normalize_whitespace",
     "nysiis",
+    "pairwise_similarity",
     "partial_ratio",
     "phonetic",
+    "phonetic_batch_arrow",
     "phonetic_hybrid",
     "pipeline",
     # Batch preprocessing
@@ -200,6 +224,7 @@ __all__ = [
     "presets",
     "regex_replace",
     "remove_stop_words",
+    "set_max_string_length",
     "smith_waterman",
     "smith_waterman_similarity",
     "sorensen_dice",
@@ -211,6 +236,7 @@ __all__ = [
     "synonym_expand",
     "token_set_ratio",
     "token_sort_ratio",
+    "utils",
     "weighted_levenshtein",
     "weighted_levenshtein_similarity",
     "whitespace_tokenize",

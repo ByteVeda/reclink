@@ -11,6 +11,7 @@ mod numeric;
 mod phonetic_blocking;
 mod qgram;
 mod sorted_neighborhood;
+mod trie;
 
 pub use canopy::CanopyClustering;
 pub use date::{DateBlocking, DateResolution};
@@ -20,6 +21,7 @@ pub use numeric::NumericBlocking;
 pub use phonetic_blocking::PhoneticBlocking;
 pub use qgram::QgramBlocking;
 pub use sorted_neighborhood::SortedNeighborhood;
+pub use trie::TrieBlocking;
 
 use crate::record::{CandidatePair, RecordBatch};
 

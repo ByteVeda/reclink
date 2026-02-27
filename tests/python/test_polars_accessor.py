@@ -20,3 +20,26 @@ class TestSeriesAccessor:
         result = s.reclink.phonetic("soundex")
         assert len(result) == 2
         assert result[0] == reclink.soundex("Smith")
+
+    def test_deduplicate(self) -> None:
+        s = pl.Series("names", ["John Smith", "Jon Smith", "Jane Doe", "Janet Doe"])
+        groups = s.reclink.deduplicate(threshold=0.8)
+        assert len(groups) >= 1
+        # John Smith and Jon Smith should be grouped
+        found = any(0 in g and 1 in g for g in groups)
+        assert found
+
+
+class TestDataFrameAccessor:
+    def test_fuzzy_merge(self) -> None:
+        left = pl.DataFrame({"name": ["John", "Jane"], "age": [30, 25]})
+        right = pl.DataFrame({"name": ["Jon", "Janet"], "city": ["NYC", "LA"]})
+        result = left.reclink.fuzzy_merge(right, left_on="name", right_on="name", threshold=0.7)
+        assert len(result) >= 1
+        assert "_score" in result.columns
+
+    def test_fuzzy_merge_no_matches(self) -> None:
+        left = pl.DataFrame({"name": ["abc"]})
+        right = pl.DataFrame({"name": ["xyz"]})
+        result = left.reclink.fuzzy_merge(right, left_on="name", right_on="name", threshold=0.99)
+        assert len(result) == 0

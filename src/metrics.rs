@@ -346,6 +346,21 @@ fn cdist<'py>(
     Ok(array)
 }
 
+/// Set the maximum string length (in characters) for metric computation.
+///
+/// Strings exceeding this limit will return 0.0 similarity without computing
+/// the full algorithm. Set to 0 to disable the check.
+#[pyfunction]
+fn set_max_string_length(max_len: usize) {
+    reclink_core::metrics::set_max_string_length(max_len);
+}
+
+/// Get the current maximum string length limit.
+#[pyfunction]
+fn get_max_string_length() -> usize {
+    reclink_core::metrics::get_max_string_length()
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(levenshtein, m)?)?;
     m.add_function(wrap_pyfunction!(levenshtein_similarity, m)?)?;
@@ -376,5 +391,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(match_best, m)?)?;
     m.add_function(wrap_pyfunction!(match_batch, m)?)?;
     m.add_function(wrap_pyfunction!(cdist, m)?)?;
+    m.add_function(wrap_pyfunction!(set_max_string_length, m)?)?;
+    m.add_function(wrap_pyfunction!(get_max_string_length, m)?)?;
     Ok(())
 }

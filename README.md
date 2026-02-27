@@ -337,6 +337,11 @@ tree.find_nearest("jon", k=2)              # [("john", 1, 2), ("jane", 2, 3)]
 
 tree.save("names.bk")
 tree = BkTree.load("names.bk")
+
+# Incremental updates
+tree.insert("new_name")       # returns index
+tree.remove(idx)               # returns bool
+idx in tree                    # __contains__
 ```
 
 ### VP-tree
@@ -352,6 +357,12 @@ tree.find_within("smith", max_distance=0.3)
 
 tree.save("names.vp")
 tree = VpTree.load("names.vp")
+
+# Incremental updates
+tree.insert("new_name")       # returns index
+tree.remove(idx)               # returns bool
+idx in tree                    # __contains__
+tree.rebuild()                 # rebalance after mutations
 ```
 
 ### N-gram index
@@ -367,6 +378,11 @@ index.search_top_k("smith", k=2)
 
 index.save("names.ngram")
 index = NgramIndex.load("names.ngram")
+
+# Incremental updates
+index.insert("new_name")      # returns index
+index.remove(idx)              # returns bool
+idx in index                   # __contains__
 ```
 
 ## Streaming
@@ -446,6 +462,8 @@ Decide which candidate pairs are matches:
 |---|---|
 | `classify_threshold(threshold)` | Match if average score >= threshold |
 | `classify_weighted(weights, threshold)` | Match if weighted sum >= threshold |
+| `classify_threshold_bands(upper, lower)` | Three-band: match / possible_match / non_match |
+| `classify_weighted_bands(weights, upper, lower)` | Three-band with weighted scores |
 | `classify_fellegi_sunter(m_probs, u_probs, upper, lower)` | Probabilistic model with known parameters |
 | `classify_fellegi_sunter_auto(max_iterations=100, ...)` | Fellegi-Sunter with EM-estimated parameters |
 
@@ -473,7 +491,14 @@ clusters = pipeline.dedup_cluster(df, id_column="id")
 matches = pipeline.link(df_left, df_right, id_column="id")
 ```
 
-All methods accept pandas DataFrames, polars DataFrames, or lists of dicts, and return the same type as the input. Match results are returned as `MatchResult` objects with `left_id`, `right_id`, `score`, and `scores` attributes.
+All methods accept pandas DataFrames, polars DataFrames, or lists of dicts, and return the same type as the input. Match results are returned as `MatchResult` objects with the following attributes:
+
+- `left_id`, `right_id` — record identifiers
+- `score` — aggregate similarity score
+- `scores` — per-comparator similarity scores
+- `match_class` — classification label: `"match"`, `"possible_match"`, or `"non_match"`
+
+`MatchResult` supports `__repr__`, `__eq__`, and `__hash__`, so results work in sets and are readable in the REPL.
 
 ## DataFrame Integration
 
@@ -508,11 +533,20 @@ import polars as pl
 
 s = pl.Series("name", ["Jon Smith", "Jane Doe", "John Smyth"])
 
-# Match best
+# Series accessor — match each value against candidates
 s.reclink.match_best(["John Smith", "Janet Doe"], scorer="jaro_winkler")
 
-# Phonetic encoding
+# Series accessor — phonetic encoding
 s.reclink.phonetic(algorithm="soundex")
+
+# Series accessor — find duplicate groups
+s.reclink.deduplicate(threshold=0.85)
+# [[0, 2]]  — rows 0 and 2 are duplicates
+
+# DataFrame accessor — fuzzy merge
+left = pl.DataFrame({"firm": ["ACME", "globex corp"]})
+right = pl.DataFrame({"company": ["Acme Inc", "Globex"], "revenue": [100, 200]})
+left.reclink.fuzzy_merge(right, left_on="firm", right_on="company", threshold=0.6)
 ```
 
 ## Evaluation
@@ -529,6 +563,17 @@ precision(predicted, truth)        # fraction of predicted that are correct
 recall(predicted, truth)           # fraction of true matches found
 f1_score(predicted, truth)         # harmonic mean of precision and recall
 confusion_matrix(predicted, truth) # {"tp": ..., "fp": ..., "fn": ...}
+```
+
+### Advanced evaluation
+
+```python
+from reclink.evaluation import scored_pairs_from_results, roc_curve, auc, optimal_threshold
+
+scored = scored_pairs_from_results(matches)   # [(left_id, right_id, score), ...]
+curve = roc_curve(scored, truth, all_pairs_count=100)
+auc(curve["fpr"], curve["tpr"])               # area under curve
+optimal_threshold(scored, truth, criterion="f1")  # {"threshold": ..., "f1": ..., ...}
 ```
 
 ## Export
@@ -563,6 +608,26 @@ explain("Jon Smith", "John Smyth", algorithms=["jaro_winkler", "token_sort_ratio
 # {"jaro_winkler": 0.832, "token_sort_ratio": 0.87}
 ```
 
+## CLI
+
+reclink ships with a command-line interface for common tasks:
+
+```bash
+# Deduplicate a CSV file
+reclink dedupe --input data.csv --field name --threshold 0.85 --output results.csv
+
+# Link two CSV files
+reclink link --left a.csv --right b.csv --field name --threshold 0.8
+
+# Find matches for a query
+reclink match --query "John Smith" --candidates-file names.txt --limit 5
+
+# Explain score breakdown for two strings
+reclink explain "John Smith" "Jon Smyth"
+```
+
+Also available via `python -m reclink`.
+
 ## Performance
 
 reclink is designed for speed:
@@ -571,6 +636,45 @@ reclink is designed for speed:
 - **Rayon parallelism** — `cdist` and pipeline stages parallelize across CPU cores
 - **Enum dispatch** — metrics use enum dispatch instead of dynamic dispatch, avoiding vtable overhead
 - **Zero-copy where possible** — PyO3 bindings minimize data copying between Python and Rust
+- **Max string length safeguard** — configurable limit (default 10,000 chars) prevents OOM on adversarial input
+
+```python
+from reclink import set_max_string_length, get_max_string_length
+set_max_string_length(5000)  # default: 10_000
+```
+
+### Benchmarks
+
+Pairwise comparison (10 string pairs, 500 iterations, microseconds per pair):
+
+| Metric | reclink | rapidfuzz | jellyfish | vs rapidfuzz | vs jellyfish |
+|--------|--------:|----------:|----------:|-------------:|-------------:|
+| levenshtein | 0.55 | 0.18 | 1.28 | 3.0x slower | **2.3x faster** |
+| jaro | 0.31 | 0.20 | 0.68 | 1.6x slower | **2.2x faster** |
+| jaro_winkler | 0.31 | 0.20 | 0.68 | 1.5x slower | **2.2x faster** |
+| damerau_levenshtein | 0.93 | 0.24 | 2.41 | 3.9x slower | **2.6x faster** |
+
+Batch matching (1,000 candidates, 50 iterations, microseconds per candidate):
+
+| Operation | reclink | rapidfuzz | thefuzz | vs rapidfuzz | vs thefuzz |
+|-----------|--------:|----------:|--------:|-------------:|-----------:|
+| match_batch (jaro_winkler) | 0.32 | 0.13 | 1.60 | 2.4x slower | **5.0x faster** |
+
+rapidfuzz uses hand-optimized C++ with SIMD intrinsics; reclink uses pure Rust with compiler autovectorization. reclink is **2-3x faster than jellyfish** and **5x faster than thefuzz** while offering a much richer feature set (record linkage pipeline, blocking, clustering, evaluation).
+
+Reproduce with `python benchmarks/compare.py` (requires `pip install rapidfuzz jellyfish thefuzz`).
+
+## Utilities
+
+```python
+from reclink.utils import validate_strings
+
+a, b, status = validate_strings("hello", "")
+# status: "right_empty"
+# Possible values: "ok", "both_empty", "left_empty", "right_empty"
+```
+
+`validate_strings` documents the library's edge-case conventions: distance metrics return the length of the non-empty string when one input is empty; similarity metrics return 0.0 (or 1.0 if both are empty).
 
 ## Development
 

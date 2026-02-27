@@ -4,7 +4,7 @@
 //! if `distance(query, node) = d` and we want `distance <= k`,
 //! only explore children with edge labels in `[d-k, d+k]`.
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 
 use crate::error::{ReclinkError, Result};
 use crate::metrics::{DistanceMetric, Metric};
@@ -35,6 +35,10 @@ pub struct BkTree {
     root: Option<Box<BkNode>>,
     metric: Metric,
     size: usize,
+    #[serde(default)]
+    deleted: AHashSet<usize>,
+    #[serde(default)]
+    next_index: usize,
 }
 
 fn compute_distance_with(metric: &Metric, a: &str, b: &str) -> usize {
@@ -58,6 +62,8 @@ impl BkTree {
             root: None,
             metric,
             size: 0,
+            deleted: AHashSet::new(),
+            next_index: strings.len(),
         };
         for (i, s) in strings.iter().enumerate() {
             tree.insert(s, i);
@@ -65,8 +71,8 @@ impl BkTree {
         Ok(tree)
     }
 
-    /// Insert a single string into the tree.
-    pub fn insert(&mut self, s: &str, index: usize) {
+    /// Insert a single string into the tree with a specific index.
+    fn insert(&mut self, s: &str, index: usize) {
         self.size += 1;
         let new_node = BkNode {
             value: s.to_string(),
@@ -90,6 +96,31 @@ impl BkTree {
                 return;
             }
         }
+    }
+
+    /// Insert a new string and return its assigned index.
+    pub fn insert_new(&mut self, s: &str) -> usize {
+        let index = self.next_index;
+        self.next_index += 1;
+        self.insert(s, index);
+        index
+    }
+
+    /// Soft-delete a string by index. Returns `true` if the index was valid
+    /// and not already deleted.
+    pub fn remove(&mut self, index: usize) -> bool {
+        if index >= self.next_index || self.deleted.contains(&index) {
+            return false;
+        }
+        self.deleted.insert(index);
+        self.size = self.size.saturating_sub(1);
+        true
+    }
+
+    /// Returns `true` if the index is valid and not deleted.
+    #[must_use]
+    pub fn contains(&self, index: usize) -> bool {
+        index < self.next_index && !self.deleted.contains(&index)
     }
 
     /// Find all strings within `max_distance` of the query.
@@ -157,7 +188,7 @@ impl BkTree {
         results: &mut Vec<BkSearchResult>,
     ) {
         let d = compute_distance_with(&self.metric, &node.value, query);
-        if d <= max_distance {
+        if d <= max_distance && !self.deleted.contains(&node.index) {
             results.push(BkSearchResult {
                 value: node.value.clone(),
                 index: node.index,
@@ -184,25 +215,27 @@ impl BkTree {
     ) {
         let d = compute_distance_with(&self.metric, &node.value, query);
 
-        if results.len() < k {
-            results.push(BkSearchResult {
-                value: node.value.clone(),
-                index: node.index,
-                distance: d,
-            });
-            results.sort_by_key(|r| r.distance);
-            if results.len() == k {
+        if !self.deleted.contains(&node.index) {
+            if results.len() < k {
+                results.push(BkSearchResult {
+                    value: node.value.clone(),
+                    index: node.index,
+                    distance: d,
+                });
+                results.sort_by_key(|r| r.distance);
+                if results.len() == k {
+                    *best_distance = results[k - 1].distance;
+                }
+            } else if d < *best_distance {
+                results.push(BkSearchResult {
+                    value: node.value.clone(),
+                    index: node.index,
+                    distance: d,
+                });
+                results.sort_by_key(|r| r.distance);
+                results.truncate(k);
                 *best_distance = results[k - 1].distance;
             }
-        } else if d < *best_distance {
-            results.push(BkSearchResult {
-                value: node.value.clone(),
-                index: node.index,
-                distance: d,
-            });
-            results.sort_by_key(|r| r.distance);
-            results.truncate(k);
-            *best_distance = results[k - 1].distance;
         }
 
         let low = d.saturating_sub(*best_distance);
@@ -274,5 +307,47 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].value, "hello");
         assert_eq!(results[0].distance, 0);
+    }
+
+    #[test]
+    fn insert_after_build() {
+        let mut tree =
+            BkTree::build(&["hello", "world"], Metric::Levenshtein(Levenshtein)).unwrap();
+        let idx = tree.insert_new("hallo");
+        assert_eq!(idx, 2);
+        assert_eq!(tree.len(), 3);
+        let results = tree.find_within("hallo", 0);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].index, 2);
+    }
+
+    #[test]
+    fn remove_excludes_from_search() {
+        let mut tree = BkTree::build(
+            &["hello", "hallo", "world"],
+            Metric::Levenshtein(Levenshtein),
+        )
+        .unwrap();
+        assert!(tree.contains(1));
+        assert!(tree.remove(1)); // remove "hallo"
+        assert!(!tree.contains(1));
+        assert_eq!(tree.len(), 2);
+
+        let results = tree.find_within("hallo", 0);
+        assert!(results.is_empty());
+
+        // knn should also skip deleted
+        let knn = tree.find_nearest("hallo", 1);
+        assert_eq!(knn.len(), 1);
+        assert_ne!(knn[0].index, 1);
+    }
+
+    #[test]
+    fn remove_idempotent() {
+        let mut tree =
+            BkTree::build(&["hello", "world"], Metric::Levenshtein(Levenshtein)).unwrap();
+        assert!(tree.remove(0));
+        assert!(!tree.remove(0)); // already deleted
+        assert!(!tree.remove(99)); // invalid index
     }
 }

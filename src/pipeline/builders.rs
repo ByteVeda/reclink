@@ -107,6 +107,15 @@ impl PyPipeline {
                     let res = parse_date_resolution(resolution)?;
                     Box::new(DateBlocking::new(field.clone(), res))
                 }
+                PyBlockerConfig::Trie {
+                    field,
+                    min_prefix_len,
+                    max_frequency,
+                } => Box::new(TrieBlocking::new(
+                    field.clone(),
+                    *min_prefix_len,
+                    *max_frequency,
+                )),
             };
             blockers.push(blocker);
         }
@@ -172,6 +181,18 @@ impl PyPipeline {
                 } => Box::new(FellegiSunterClassifier::new(
                     m_probs.clone(),
                     u_probs.clone(),
+                    *upper,
+                    *lower,
+                )),
+                PyClassifierConfig::ThresholdBands { upper, lower } => {
+                    Box::new(ThresholdBandsClassifier::new(*upper, *lower))
+                }
+                PyClassifierConfig::WeightedBands {
+                    weights,
+                    upper,
+                    lower,
+                } => Box::new(WeightedSumBandsClassifier::new(
+                    weights.clone(),
                     *upper,
                     *lower,
                 )),

@@ -7,8 +7,8 @@ mod weighted;
 
 pub use em::*;
 pub use fellegi_sunter::FellegiSunterClassifier;
-pub use threshold::ThresholdClassifier;
-pub use weighted::WeightedSumClassifier;
+pub use threshold::{ThresholdBandsClassifier, ThresholdClassifier};
+pub use weighted::{WeightedSumBandsClassifier, WeightedSumClassifier};
 
 use crate::record::{ClassifiedPair, ComparisonVector};
 

@@ -2,8 +2,12 @@ pub mod builders;
 pub mod config;
 pub mod helpers;
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use pyo3::prelude::*;
 use reclink_core::classify::Classifier;
+use reclink_core::record::MatchClass;
 
 use config::{PyBlockerConfig, PyClassifierConfig, PyClusterConfig, PyComparatorConfig};
 use helpers::{
@@ -77,6 +81,14 @@ impl PyRecord {
     }
 }
 
+fn match_class_str(class: MatchClass) -> String {
+    match class {
+        MatchClass::Match => "match".to_string(),
+        MatchClass::Possible => "possible".to_string(),
+        MatchClass::NonMatch => "non_match".to_string(),
+    }
+}
+
 /// A match result from the pipeline.
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -89,6 +101,44 @@ struct PyMatchResult {
     score: f64,
     #[pyo3(get)]
     scores: Vec<f64>,
+    #[pyo3(get)]
+    match_class: String,
+}
+
+#[pymethods]
+impl PyMatchResult {
+    fn __repr__(&self) -> String {
+        format!(
+            "MatchResult(left_id='{}', right_id='{}', score={:.4}, match_class='{}', scores={:?})",
+            self.left_id, self.right_id, self.score, self.match_class, self.scores
+        )
+    }
+
+    fn __str__(&self) -> String {
+        self.__repr__()
+    }
+
+    fn __eq__(&self, other: &PyMatchResult) -> bool {
+        self.left_id == other.left_id
+            && self.right_id == other.right_id
+            && (self.score - other.score).abs() < 1e-10
+            && self.scores.len() == other.scores.len()
+            && self
+                .scores
+                .iter()
+                .zip(other.scores.iter())
+                .all(|(a, b)| (a - b).abs() < 1e-10)
+            && self.match_class == other.match_class
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.left_id.hash(&mut hasher);
+        self.right_id.hash(&mut hasher);
+        self.score.to_bits().hash(&mut hasher);
+        self.match_class.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 
 /// The main pipeline class exposed to Python.
@@ -195,6 +245,18 @@ impl PyPipeline {
         self.classifier = Some(PyClassifierConfig::Weighted { weights, threshold });
     }
 
+    fn classify_threshold_bands(&mut self, upper: f64, lower: f64) {
+        self.classifier = Some(PyClassifierConfig::ThresholdBands { upper, lower });
+    }
+
+    fn classify_weighted_bands(&mut self, weights: Vec<f64>, upper: f64, lower: f64) {
+        self.classifier = Some(PyClassifierConfig::WeightedBands {
+            weights,
+            upper,
+            lower,
+        });
+    }
+
     fn classify_fellegi_sunter(
         &mut self,
         m_probs: Vec<f64>,
@@ -262,6 +324,15 @@ impl PyPipeline {
             .push(PyBlockerConfig::Numeric { field, bucket_size });
     }
 
+    #[pyo3(signature = (field, min_prefix_len=2, max_frequency=100))]
+    fn block_trie(&mut self, field: String, min_prefix_len: usize, max_frequency: usize) {
+        self.blockers.push(PyBlockerConfig::Trie {
+            field,
+            min_prefix_len,
+            max_frequency,
+        });
+    }
+
     #[pyo3(signature = (field, resolution="year"))]
     fn block_date(&mut self, field: String, resolution: &str) {
         self.date_fields.insert(field.clone());
@@ -321,6 +392,7 @@ impl PyPipeline {
                         left_id: batch.records[m.pair.left].id.clone(),
                         right_id: batch.records[m.pair.right].id.clone(),
                         score: m.aggregate_score,
+                        match_class: match_class_str(m.class),
                         scores: m.scores,
                     })
                     .collect())
@@ -334,6 +406,7 @@ impl PyPipeline {
                         left_id: batch.records[m.pair.left].id.clone(),
                         right_id: batch.records[m.pair.right].id.clone(),
                         score: m.aggregate_score,
+                        match_class: match_class_str(m.class),
                         scores: m.scores,
                     })
                     .collect())
@@ -461,6 +534,7 @@ impl PyPipeline {
                         left_id: left_batch.records[m.pair.left].id.clone(),
                         right_id: right_batch.records[m.pair.right].id.clone(),
                         score: m.aggregate_score,
+                        match_class: match_class_str(m.class),
                         scores: m.scores,
                     })
                     .collect())
@@ -474,6 +548,7 @@ impl PyPipeline {
                         left_id: left_batch.records[m.pair.left].id.clone(),
                         right_id: right_batch.records[m.pair.right].id.clone(),
                         score: m.aggregate_score,
+                        match_class: match_class_str(m.class),
                         scores: m.scores,
                     })
                     .collect())

@@ -3,6 +3,7 @@
 //! Unlike BK-tree (integer distances only), VP-tree works with any metric
 //! that returns a dissimilarity score (1 - similarity).
 
+use ahash::AHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::metrics::Metric;
@@ -33,6 +34,12 @@ pub struct VpTree {
     root: Option<Box<VpNode>>,
     metric: Metric,
     size: usize,
+    #[serde(default)]
+    deleted: AHashSet<usize>,
+    #[serde(default)]
+    buffer: Vec<(String, usize)>,
+    #[serde(default)]
+    next_index: usize,
 }
 
 impl VpTree {
@@ -49,6 +56,73 @@ impl VpTree {
             root,
             metric,
             size: strings.len(),
+            deleted: AHashSet::new(),
+            buffer: Vec::new(),
+            next_index: strings.len(),
+        }
+    }
+
+    /// Insert a new string into the buffer and return its assigned index.
+    pub fn insert_new(&mut self, s: &str) -> usize {
+        let index = self.next_index;
+        self.next_index += 1;
+        self.buffer.push((s.to_string(), index));
+        self.size += 1;
+        index
+    }
+
+    /// Soft-delete a string by index. Returns `true` if the index was valid
+    /// and not already deleted.
+    pub fn remove(&mut self, index: usize) -> bool {
+        if index >= self.next_index || self.deleted.contains(&index) {
+            return false;
+        }
+        self.deleted.insert(index);
+        self.size = self.size.saturating_sub(1);
+        true
+    }
+
+    /// Returns `true` if the index is valid and not deleted.
+    #[must_use]
+    pub fn contains(&self, index: usize) -> bool {
+        index < self.next_index && !self.deleted.contains(&index)
+    }
+
+    /// Rebuild the tree from all non-deleted items (tree + buffer).
+    pub fn rebuild(&mut self) {
+        let mut items = Vec::new();
+        // Collect from tree
+        if let Some(root) = &self.root {
+            Self::collect_items(root, &self.deleted, &mut items);
+        }
+        // Collect from buffer
+        for (s, idx) in &self.buffer {
+            if !self.deleted.contains(idx) {
+                items.push((s.clone(), *idx));
+            }
+        }
+        self.root = Self::build_node(&mut items, &self.metric);
+        self.buffer.clear();
+        // Rebuild deleted set: all indices < next_index that are not in items
+        let live: AHashSet<usize> = items.iter().map(|(_, idx)| *idx).collect();
+        self.deleted.clear();
+        for i in 0..self.next_index {
+            if !live.contains(&i) {
+                self.deleted.insert(i);
+            }
+        }
+        self.size = items.len();
+    }
+
+    fn collect_items(node: &VpNode, deleted: &AHashSet<usize>, items: &mut Vec<(String, usize)>) {
+        if !deleted.contains(&node.index) {
+            items.push((node.value.clone(), node.index));
+        }
+        if let Some(left) = &node.left {
+            Self::collect_items(left, deleted, items);
+        }
+        if let Some(right) = &node.right {
+            Self::collect_items(right, deleted, items);
         }
     }
 
@@ -59,6 +133,19 @@ impl VpTree {
         if let Some(root) = &self.root {
             self.search_within(root, query, max_distance, &mut results);
         }
+        // Linear scan of buffer
+        for (s, idx) in &self.buffer {
+            if !self.deleted.contains(idx) {
+                let d = Self::dissimilarity(&self.metric, s, query);
+                if d <= max_distance {
+                    results.push(VpSearchResult {
+                        value: s.clone(),
+                        index: *idx,
+                        distance: d,
+                    });
+                }
+            }
+        }
         results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
         results
     }
@@ -66,18 +153,40 @@ impl VpTree {
     /// Find the k nearest neighbors of the query.
     #[must_use]
     pub fn find_nearest(&self, query: &str, k: usize) -> Vec<VpSearchResult> {
-        if self.root.is_none() || k == 0 {
+        if k == 0 {
             return Vec::new();
         }
         let mut results = Vec::new();
         let mut tau = f64::INFINITY;
-        self.knn_search(
-            self.root.as_ref().unwrap(),
-            query,
-            k,
-            &mut results,
-            &mut tau,
-        );
+        if let Some(root) = &self.root {
+            self.knn_search(root, query, k, &mut results, &mut tau);
+        }
+        // Linear scan of buffer
+        for (s, idx) in &self.buffer {
+            if !self.deleted.contains(idx) {
+                let d = Self::dissimilarity(&self.metric, s, query);
+                if results.len() < k {
+                    results.push(VpSearchResult {
+                        value: s.clone(),
+                        index: *idx,
+                        distance: d,
+                    });
+                    results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+                    if results.len() == k {
+                        tau = results[k - 1].distance;
+                    }
+                } else if d < tau {
+                    results.push(VpSearchResult {
+                        value: s.clone(),
+                        index: *idx,
+                        distance: d,
+                    });
+                    results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+                    results.truncate(k);
+                    tau = results[k - 1].distance;
+                }
+            }
+        }
         results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
         results.truncate(k);
         results
@@ -165,7 +274,7 @@ impl VpTree {
         results: &mut Vec<VpSearchResult>,
     ) {
         let d = Self::dissimilarity(&self.metric, &node.value, query);
-        if d <= max_distance {
+        if d <= max_distance && !self.deleted.contains(&node.index) {
             results.push(VpSearchResult {
                 value: node.value.clone(),
                 index: node.index,
@@ -197,25 +306,27 @@ impl VpTree {
     ) {
         let d = Self::dissimilarity(&self.metric, &node.value, query);
 
-        if results.len() < k {
-            results.push(VpSearchResult {
-                value: node.value.clone(),
-                index: node.index,
-                distance: d,
-            });
-            results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
-            if results.len() == k {
+        if !self.deleted.contains(&node.index) {
+            if results.len() < k {
+                results.push(VpSearchResult {
+                    value: node.value.clone(),
+                    index: node.index,
+                    distance: d,
+                });
+                results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+                if results.len() == k {
+                    *tau = results[k - 1].distance;
+                }
+            } else if d < *tau {
+                results.push(VpSearchResult {
+                    value: node.value.clone(),
+                    index: node.index,
+                    distance: d,
+                });
+                results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+                results.truncate(k);
                 *tau = results[k - 1].distance;
             }
-        } else if d < *tau {
-            results.push(VpSearchResult {
-                value: node.value.clone(),
-                index: node.index,
-                distance: d,
-            });
-            results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
-            results.truncate(k);
-            *tau = results[k - 1].distance;
         }
 
         // Search children
@@ -288,5 +399,51 @@ mod tests {
         let results = tree.find_within("hello", 0.0);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].value, "hello");
+    }
+
+    #[test]
+    fn insert_and_find() {
+        let mut tree = VpTree::build(
+            &["hello", "world"],
+            Metric::JaroWinkler(JaroWinkler::default()),
+        );
+        let idx = tree.insert_new("hallo");
+        assert_eq!(idx, 2);
+        assert_eq!(tree.len(), 3);
+        let results = tree.find_within("hallo", 0.0);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].index, 2);
+    }
+
+    #[test]
+    fn remove_excludes_from_search() {
+        let mut tree = VpTree::build(
+            &["hello", "world", "hallo"],
+            Metric::JaroWinkler(JaroWinkler::default()),
+        );
+        assert!(tree.contains(2));
+        assert!(tree.remove(2)); // remove "hallo"
+        assert!(!tree.contains(2));
+        assert_eq!(tree.len(), 2);
+        let results = tree.find_within("hallo", 0.0);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn rebuild_consolidates() {
+        let mut tree = VpTree::build(
+            &["hello", "world"],
+            Metric::JaroWinkler(JaroWinkler::default()),
+        );
+        tree.insert_new("hallo");
+        tree.remove(1); // remove "world"
+        tree.rebuild();
+        assert_eq!(tree.len(), 2);
+        assert!(tree.contains(0)); // "hello"
+        assert!(!tree.contains(1)); // "world" was deleted
+        assert!(tree.contains(2)); // "hallo"
+                                   // Buffer should be empty after rebuild
+        let results = tree.find_within("hallo", 0.0);
+        assert_eq!(results.len(), 1);
     }
 }

@@ -3,6 +3,7 @@
 //! Provides Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone,
 //! and Cologne Phonetic encoders through a common [`PhoneticEncoder`] trait.
 
+pub mod beider_morse;
 mod caverphone;
 mod cologne;
 mod double_metaphone;
@@ -10,6 +11,7 @@ mod metaphone;
 mod nysiis;
 mod soundex;
 
+pub use beider_morse::BeiderMorse;
 pub use caverphone::Caverphone;
 pub use cologne::ColognePhonetic;
 pub use double_metaphone::DoubleMetaphone;
@@ -48,6 +50,8 @@ pub enum PhoneticAlgorithm {
     Caverphone(Caverphone),
     /// Cologne Phonetic (Kolner Phonetik) encoding.
     ColognePhonetic(ColognePhonetic),
+    /// Beider-Morse Phonetic Matching.
+    BeiderMorse(BeiderMorse),
 }
 
 impl PhoneticEncoder for PhoneticAlgorithm {
@@ -59,6 +63,7 @@ impl PhoneticEncoder for PhoneticAlgorithm {
             PhoneticAlgorithm::Nysiis(e) => e.encode(s),
             PhoneticAlgorithm::Caverphone(e) => e.encode(s),
             PhoneticAlgorithm::ColognePhonetic(e) => e.encode(s),
+            PhoneticAlgorithm::BeiderMorse(e) => e.encode(s),
         }
     }
 }

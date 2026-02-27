@@ -67,6 +67,7 @@ class ReclinkPipeline:
                 "left_id": r.left_id,
                 "right_id": r.right_id,
                 "score": r.score,
+                "match_class": r.match_class,
                 "scores": r.scores,
             }
             for r in results
@@ -128,6 +129,7 @@ class ReclinkPipeline:
                 "left_id": r.left_id,
                 "right_id": r.right_id,
                 "score": r.score,
+                "match_class": r.match_class,
                 "scores": r.scores,
             }
             for r in results
@@ -298,6 +300,38 @@ class PipelineBuilder:
             Weighted sum threshold for match classification.
         """
         self._inner.classify_weighted(list(weights), threshold)
+        return self
+
+    def classify_threshold_bands(self, upper: float, lower: float) -> PipelineBuilder:
+        """Classify into three bands using average score thresholds.
+
+        Parameters
+        ----------
+        upper : float
+            Scores >= upper are classified as "match".
+        lower : float
+            Scores < lower are classified as "non_match".
+            Scores between lower and upper are "possible".
+        """
+        self._inner.classify_threshold_bands(upper, lower)
+        return self
+
+    def classify_weighted_bands(
+        self, weights: Sequence[float], upper: float, lower: float
+    ) -> PipelineBuilder:
+        """Classify into three bands using weighted sum thresholds.
+
+        Parameters
+        ----------
+        weights : sequence of float
+            Per-field weights.
+        upper : float
+            Weighted sum >= upper is "match".
+        lower : float
+            Weighted sum < lower is "non_match".
+            Between lower and upper is "possible".
+        """
+        self._inner.classify_weighted_bands(list(weights), upper, lower)
         return self
 
     def compare_phonetic(self, field: str, algorithm: str = "soundex") -> PipelineBuilder:

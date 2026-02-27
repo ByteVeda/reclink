@@ -37,6 +37,18 @@ fn cologne_phonetic(s: &str) -> String {
     phonetic_mod::ColognePhonetic.encode(s)
 }
 
+/// Compute the Beider-Morse phonetic code for a string.
+#[pyfunction]
+#[pyo3(signature = (s, ashkenazi=false))]
+fn beider_morse(s: &str, ashkenazi: bool) -> String {
+    let encoder = if ashkenazi {
+        phonetic_mod::BeiderMorse::ashkenazi()
+    } else {
+        phonetic_mod::BeiderMorse::new()
+    };
+    encoder.encode(s)
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(soundex, m)?)?;
     m.add_function(wrap_pyfunction!(metaphone, m)?)?;
@@ -44,5 +56,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(nysiis, m)?)?;
     m.add_function(wrap_pyfunction!(caverphone, m)?)?;
     m.add_function(wrap_pyfunction!(cologne_phonetic, m)?)?;
+    m.add_function(wrap_pyfunction!(beider_morse, m)?)?;
     Ok(())
 }
