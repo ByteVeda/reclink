@@ -3,6 +3,7 @@
 use ahash::{AHashMap, AHashSet};
 
 use crate::blocking::BlockingStrategy;
+use crate::index::minhash_index::{band_keys, minhash_signature, shingle};
 use crate::record::{CandidatePair, RecordBatch};
 
 /// LSH blocking uses MinHash signatures and banding to find approximately
@@ -30,53 +31,6 @@ impl LshBlocking {
             shingle_size: 3,
         }
     }
-}
-
-/// Computes shingles (character n-grams) of a string.
-fn shingle(s: &str, k: usize) -> AHashSet<String> {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.len() < k {
-        let mut set = AHashSet::new();
-        set.insert(s.to_string());
-        return set;
-    }
-    chars
-        .windows(k)
-        .map(|w| w.iter().collect::<String>())
-        .collect()
-}
-
-/// Computes a MinHash signature for a set of shingles.
-fn minhash_signature(shingles: &AHashSet<String>, num_hashes: usize) -> Vec<u64> {
-    let mut signature = vec![u64::MAX; num_hashes];
-
-    for shingle in shingles {
-        for (i, sig) in signature.iter_mut().enumerate() {
-            // Use different hash seeds for each function
-            let hash = ahash::RandomState::with_seeds(
-                i as u64,
-                i as u64 * 31,
-                i as u64 * 37,
-                i as u64 * 41,
-            )
-            .hash_one(shingle);
-            *sig = (*sig).min(hash);
-        }
-    }
-
-    signature
-}
-
-/// Extracts band keys from a MinHash signature.
-fn band_keys(signature: &[u64], num_bands: usize) -> Vec<Vec<u64>> {
-    let rows_per_band = signature.len() / num_bands;
-    if rows_per_band == 0 {
-        return vec![signature.to_vec()];
-    }
-    signature
-        .chunks(rows_per_band)
-        .map(|chunk| chunk.to_vec())
-        .collect()
 }
 
 impl BlockingStrategy for LshBlocking {

@@ -32,6 +32,12 @@ pub fn parse_preprocess_ops(names: &[String]) -> PyResult<Vec<preprocess::Prepro
             "clean_company" => Ok(preprocess::PreprocessOp::CleanCompany),
             "normalize_email" => Ok(preprocess::PreprocessOp::NormalizeEmail),
             "normalize_url" => Ok(preprocess::PreprocessOp::NormalizeUrl),
+            "transliterate_cyrillic" => Ok(preprocess::PreprocessOp::Transliterate(
+                preprocess::transliterate::Script::Cyrillic,
+            )),
+            "transliterate_greek" => Ok(preprocess::PreprocessOp::Transliterate(
+                preprocess::transliterate::Script::Greek,
+            )),
             other if other.starts_with("synonym_expand:") => {
                 let json = &other["synonym_expand:".len()..];
                 let map: std::collections::HashMap<String, String> = serde_json::from_str(json)
@@ -60,6 +66,7 @@ pub fn parse_preprocess_ops(names: &[String]) -> PyResult<Vec<preprocess::Prepro
                  remove_stop_words, expand_abbreviations, strip_diacritics, \
                  clean_name, clean_address, clean_company, \
                  normalize_email, normalize_url, \
+                 transliterate_cyrillic, transliterate_greek, \
                  synonym_expand:{{\"key\":\"value\"}}, \
                  regex_replace:<pattern>:<replacement>"
             ))),

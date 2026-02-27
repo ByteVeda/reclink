@@ -67,9 +67,7 @@ def cmd_dedupe(args: argparse.Namespace) -> None:
 
     results = pipeline.dedup(data, id_column=id_column)
 
-    output_rows = (
-        results if isinstance(results, list) else results.to_dict("records")
-    )
+    output_rows = results if isinstance(results, list) else results.to_dict("records")
 
     if args.output:
         if args.format == "json":
@@ -125,9 +123,7 @@ def cmd_link(args: argparse.Namespace) -> None:
 
     results = pipeline.link(left_data, right_data, id_column=id_column)
 
-    output_rows = (
-        results if isinstance(results, list) else results.to_dict("records")
-    )
+    output_rows = results if isinstance(results, list) else results.to_dict("records")
 
     if args.output:
         if args.format == "json":

@@ -346,6 +346,41 @@ fn cdist<'py>(
     Ok(array)
 }
 
+/// Compute a Levenshtein alignment between two strings.
+///
+/// Returns a dict with:
+/// - ``ops``: list of operation strings (e.g. "match:a", "sub:b->c", "ins:x", "del:y")
+/// - ``distance``: integer edit distance
+/// - ``visual``: three-line visual alignment string
+#[pyfunction]
+fn levenshtein_align(a: &str, b: &str) -> std::collections::HashMap<String, PyObject> {
+    use pyo3::types::{PyList, PyString};
+
+    let alignment = reclink_core::metrics::alignment::levenshtein_alignment(a, b);
+    let mut result = std::collections::HashMap::new();
+
+    Python::with_gil(|py| {
+        let ops = alignment.op_names();
+        let py_ops = PyList::new(py, ops.iter().map(|s| PyString::new(py, s))).unwrap();
+        result.insert("ops".to_string(), py_ops.into_any().unbind());
+        result.insert(
+            "distance".to_string(),
+            alignment
+                .distance
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+        );
+        result.insert(
+            "visual".to_string(),
+            PyString::new(py, &alignment.visual()).into_any().unbind(),
+        );
+    });
+
+    result
+}
+
 /// Set the maximum string length (in characters) for metric computation.
 ///
 /// Strings exceeding this limit will return 0.0 similarity without computing
@@ -391,6 +426,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(match_best, m)?)?;
     m.add_function(wrap_pyfunction!(match_batch, m)?)?;
     m.add_function(wrap_pyfunction!(cdist, m)?)?;
+    m.add_function(wrap_pyfunction!(levenshtein_align, m)?)?;
     m.add_function(wrap_pyfunction!(set_max_string_length, m)?)?;
     m.add_function(wrap_pyfunction!(get_max_string_length, m)?)?;
     Ok(())

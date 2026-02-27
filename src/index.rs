@@ -282,10 +282,81 @@ impl PyMmapNgramIndex {
     }
 }
 
+/// MinHash/LSH index for approximate nearest-neighbor search.
+///
+/// Uses MinHash signatures and banding for efficient similarity search.
+#[pyclass]
+struct PyMinHashIndex {
+    inner: index::MinHashIndex,
+}
+
+#[pymethods]
+impl PyMinHashIndex {
+    /// Build a new MinHash index from a list of strings.
+    #[staticmethod]
+    #[pyo3(signature = (strings, num_hashes=100, num_bands=20, shingle_size=3))]
+    fn build(
+        strings: Vec<String>,
+        num_hashes: usize,
+        num_bands: usize,
+        shingle_size: usize,
+    ) -> Self {
+        let refs: Vec<&str> = strings.iter().map(|s| s.as_str()).collect();
+        Self {
+            inner: index::MinHashIndex::build_with_shingle_size(
+                &refs,
+                num_hashes,
+                num_bands,
+                shingle_size,
+            ),
+        }
+    }
+
+    /// Find all similar strings above the given threshold.
+    ///
+    /// Returns list of (index, value, estimated_similarity) tuples,
+    /// sorted by descending similarity.
+    #[pyo3(signature = (query, threshold=0.5))]
+    fn query(&self, query: &str, threshold: f64) -> Vec<(usize, String, f64)> {
+        self.inner.query(query, threshold)
+    }
+
+    /// Insert a new string and return its assigned index.
+    fn insert(&mut self, s: &str) -> usize {
+        self.inner.insert(s)
+    }
+
+    /// Soft-delete a string by index.
+    fn remove(&mut self, index: usize) -> bool {
+        self.inner.remove(index)
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Save the index to a file.
+    fn save(&self, path: &str) -> PyResult<()> {
+        index::persistence::save_to_file(&self.inner, std::path::Path::new(path))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Load an index from a file.
+    #[staticmethod]
+    fn load(path: &str) -> PyResult<Self> {
+        let mut inner: index::MinHashIndex =
+            index::persistence::load_from_file(std::path::Path::new(path))
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        inner.rebuild_buckets();
+        Ok(Self { inner })
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBkTree>()?;
     m.add_class::<PyVpTree>()?;
     m.add_class::<PyNgramIndex>()?;
     m.add_class::<PyMmapNgramIndex>()?;
+    m.add_class::<PyMinHashIndex>()?;
     Ok(())
 }

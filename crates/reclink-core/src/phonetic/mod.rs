@@ -11,6 +11,7 @@ mod metaphone;
 mod nysiis;
 mod soundex;
 
+pub use beider_morse::language::{detect_language, Language};
 pub use beider_morse::BeiderMorse;
 pub use caverphone::Caverphone;
 pub use cologne::ColognePhonetic;

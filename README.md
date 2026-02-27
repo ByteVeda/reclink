@@ -9,7 +9,7 @@ Blazing-fast fuzzy matching and record linkage library powered by Rust.
 - **7 phonetic algorithms** — Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone, Cologne, Beider-Morse
 - **Domain preprocessors** — `clean_name`, `clean_address`, `clean_company`, email/URL normalization, synonym expansion
 - **Scoring presets** — pre-tuned `CompositeScorer` configs for name matching, address matching, and general-purpose use
-- **Index structures** — BK-tree, VP-tree, N-gram index, and memory-mapped N-gram index for sub-linear nearest-neighbor search
+- **Index structures** — BK-tree, VP-tree, N-gram index, memory-mapped N-gram index, and MinHash/LSH index for sub-linear nearest-neighbor search
 - **Streaming matcher** — lazy/chunked matching over iterators without materializing the full dataset
 - **TF-IDF matcher** — corpus-aware similarity scoring
 - **Full record linkage pipeline** — blocking, comparison, classification, and clustering
@@ -19,6 +19,12 @@ Blazing-fast fuzzy matching and record linkage library powered by Rust.
 - **Native Polars plugin** — zero-GIL-overhead expressions for similarity, phonetic encoding, and matching
 - **Arrow-friendly batch API** — `cdist_arrow`, `pairwise_similarity`, `match_best_arrow`, `match_batch_arrow`, `phonetic_batch_arrow`
 - **Parallel computation** — Rayon-powered `cdist` and pipeline execution
+- **Transliteration** — Cyrillic-to-Latin and Greek-to-Latin character transliteration
+- **Edit distance alignment** — visual alignment showing match/substitute/insert/delete operations
+- **Language detection** — detect the language of a string (exposed from Beider-Morse internals)
+- **Pipeline serialization** — save/load pipelines as JSON for reproducible workflows
+- **Pipeline profiling** — per-stage timing for performance tuning
+- **Built-in benchmarking** — benchmark metrics and pipelines on your data
 - **Evaluation & export** — precision/recall/F1, ROC/AUC, CSV/JSON export
 
 ## Installation
@@ -240,6 +246,19 @@ normalize_email("John.Doe+tag@Gmail.COM")  # "johndoe@gmail.com"
 normalize_url("HTTP://WWW.Example.COM/path/")  # "example.com/path"
 ```
 
+### Transliteration
+
+Convert Cyrillic and Greek text to Latin characters:
+
+```python
+from reclink import transliterate_cyrillic, transliterate_greek
+
+transliterate_cyrillic("Москва")           # "Moskva"
+transliterate_cyrillic("Иванов")           # "Ivanov"
+transliterate_greek("Αθήνα")              # "Athina"
+transliterate_greek("Παπαδόπουλος")       # "Papadopoylos"
+```
+
 ### Synonym expansion
 
 ```python
@@ -407,6 +426,30 @@ index.search_top_k("smith", k=2)
 len(index)                            # number of indexed strings
 ```
 
+### MinHash/LSH index
+
+For approximate nearest-neighbor search over large string collections:
+
+```python
+from reclink import MinHashIndex
+
+# Build an index
+index = MinHashIndex.build(["Jonathan Smith", "Jonathon Smith", "Xyz Abc"],
+                           num_hashes=100, num_bands=20)
+
+# Query for similar strings
+results = index.query("Jonathan Smith", threshold=0.3)
+# [(0, "Jonathan Smith", 1.0), (1, "Jonathon Smith", 0.85)]
+
+# Incremental updates
+index.insert("John Smith")
+index.remove(2)
+
+# Persistence
+index.save("names.minhash")
+index = MinHashIndex.load("names.minhash")
+```
+
 ## Arrow Batch Operations
 
 Array-friendly functions for DataFrame workflows — returns plain lists instead of numpy arrays, minimizing Python/Rust round-trips:
@@ -541,6 +584,35 @@ clusters = pipeline.dedup_cluster(df, id_column="id")
 # Record linkage — match across two datasets
 matches = pipeline.link(df_left, df_right, id_column="id")
 ```
+
+### Serialization
+
+Save and load pipeline configurations as JSON for reproducible workflows:
+
+```python
+# Save to JSON string
+json_str = pipeline.to_json()
+
+# Restore from JSON string
+restored = ReclinkPipeline.from_json(json_str)
+
+# Save/load from file
+pipeline.to_file("pipeline.json")
+restored = ReclinkPipeline.from_file("pipeline.json")
+```
+
+### Profiling
+
+Enable per-stage timing to find performance bottlenecks:
+
+```python
+pipeline = pipeline.with_profiling()
+matches = pipeline.dedup(df)
+stats = pipeline.profiling_stats
+# {"preprocess_ns": 1234, "blocking_ns": 5678, "comparison_ns": 9012, "classification_ns": 345}
+```
+
+### Running the Pipeline
 
 All methods accept pandas DataFrames, polars DataFrames, or lists of dicts, and return the same type as the input. Match results are returned as `MatchResult` objects with the following attributes:
 
@@ -680,6 +752,55 @@ explain("Jon Smith", "John Smyth")
 
 explain("Jon Smith", "John Smyth", algorithms=["jaro_winkler", "token_sort_ratio"])
 # {"jaro_winkler": 0.832, "token_sort_ratio": 0.87}
+```
+
+## Alignment Visualization
+
+See exactly how two strings differ with a visual edit-distance alignment:
+
+```python
+from reclink import levenshtein_align
+
+result = levenshtein_align("Smith", "Smyth")
+print(result["visual"])
+# S m i t h
+# | |   | |
+# S m y t h
+
+result["distance"]  # 1
+result["ops"]       # ["match:S", "match:m", "sub:i->y", "match:t", "match:h"]
+```
+
+## Language Detection
+
+Detect the language origin of a name (uses Beider-Morse language detection):
+
+```python
+from reclink import detect_language
+
+detect_language("Müller")    # "german"
+detect_language("Smith")     # "english"
+```
+
+## Benchmarking
+
+Benchmark string metrics and pipelines on your data:
+
+```python
+from reclink.benchmark import benchmark_metrics, benchmark_pipeline
+
+# Benchmark individual metrics
+results = benchmark_metrics(
+    [("John", "Jon"), ("Smith", "Smyth")],
+    metrics=["jaro_winkler", "levenshtein"],
+    n=1000,
+)
+for r in results["results"]:
+    print(f"{r['metric']}: {r['per_pair_ns']:.0f} ns/pair")
+
+# Benchmark a full pipeline
+results = benchmark_pipeline(pipeline, records, n=10)
+print(f"{results['runs_per_sec']:.1f} runs/sec")
 ```
 
 ## CLI
