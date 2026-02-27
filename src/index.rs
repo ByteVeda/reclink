@@ -3,6 +3,22 @@ use pyo3::prelude::*;
 use reclink_core::index;
 use reclink_core::metrics;
 
+fn format_bytes(bytes: usize) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.1} GB", b / GB)
+    } else if b >= MB {
+        format!("{:.1} MB", b / MB)
+    } else if b >= KB {
+        format!("{:.1} KB", b / KB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 /// BK-tree for efficient metric-space nearest-neighbor search.
 ///
 /// Only works with integer distance metrics (levenshtein, damerau_levenshtein, hamming).
@@ -63,6 +79,16 @@ impl PyBkTree {
     /// Check if an index is valid and not deleted.
     fn __contains__(&self, index: usize) -> bool {
         self.inner.contains(index)
+    }
+
+    /// Estimated heap memory usage in bytes.
+    fn memory_usage(&self) -> usize {
+        self.inner.memory_usage()
+    }
+
+    /// Estimated heap memory usage as a human-readable string.
+    fn memory_usage_human(&self) -> String {
+        format_bytes(self.inner.memory_usage())
     }
 
     /// Save the BK-tree to a file.
@@ -143,6 +169,16 @@ impl PyVpTree {
         self.inner.rebuild();
     }
 
+    /// Estimated heap memory usage in bytes.
+    fn memory_usage(&self) -> usize {
+        self.inner.memory_usage()
+    }
+
+    /// Estimated heap memory usage as a human-readable string.
+    fn memory_usage_human(&self) -> String {
+        format_bytes(self.inner.memory_usage())
+    }
+
     /// Save the VP-tree to a file.
     fn save(&self, path: &str) -> PyResult<()> {
         index::persistence::save_to_file(&self.inner, std::path::Path::new(path))
@@ -213,6 +249,16 @@ impl PyNgramIndex {
     /// Check if an index is valid and not deleted.
     fn __contains__(&self, index: usize) -> bool {
         self.inner.contains(index)
+    }
+
+    /// Estimated heap memory usage in bytes.
+    fn memory_usage(&self) -> usize {
+        self.inner.memory_usage()
+    }
+
+    /// Estimated heap memory usage as a human-readable string.
+    fn memory_usage_human(&self) -> String {
+        format_bytes(self.inner.memory_usage())
     }
 
     /// Save the n-gram index to a file.
@@ -333,6 +379,16 @@ impl PyMinHashIndex {
 
     fn __len__(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Estimated heap memory usage in bytes.
+    fn memory_usage(&self) -> usize {
+        self.inner.memory_usage()
+    }
+
+    /// Estimated heap memory usage as a human-readable string.
+    fn memory_usage_human(&self) -> String {
+        format_bytes(self.inner.memory_usage())
     }
 
     /// Save the index to a file.

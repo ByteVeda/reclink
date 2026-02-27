@@ -13,7 +13,9 @@ pub use normalize::{
     normalize_unicode, normalize_url, normalize_whitespace, regex_replace, remove_stop_words,
     standardize_name, strip_diacritics, strip_punctuation, NormalizationForm,
 };
-pub use tokenize::{ngram_tokenize, whitespace_tokenize};
+pub use tokenize::{
+    character_tokenize, is_cjk, ngram_tokenize, smart_tokenize, whitespace_tokenize,
+};
 
 use rayon::prelude::*;
 

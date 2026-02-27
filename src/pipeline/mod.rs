@@ -409,12 +409,17 @@ impl PyPipeline {
     }
 
     /// Run deduplication on a list of records.
-    fn dedup(&mut self, records: Vec<PyRef<PyRecord>>) -> PyResult<Vec<PyMatchResult>> {
+    fn dedup(
+        &mut self,
+        py: Python<'_>,
+        records: Vec<PyRef<PyRecord>>,
+    ) -> PyResult<Vec<PyMatchResult>> {
         self.profiling_stats.clear();
+        let profiling = self.profiling;
 
         let t0 = Instant::now();
         let batch = self.build_record_batch(&records)?;
-        if self.profiling {
+        if profiling {
             self.profiling_stats
                 .insert("preprocess".into(), t0.elapsed().as_nanos() as u64);
         }
@@ -432,48 +437,57 @@ impl PyPipeline {
                 let blockers = self.build_blockers()?;
                 let comparators = self.build_comparators()?;
 
-                let t1 = Instant::now();
-                let candidates = generate_dedup_candidates(&blockers, &batch);
-                if self.profiling {
+                let (blocking_ns, comparison_ns, classification_ns, matches) =
+                    py.allow_threads(|| {
+                        let t1 = Instant::now();
+                        let candidates = generate_dedup_candidates(&blockers, &batch);
+                        let blocking_ns = t1.elapsed().as_nanos() as u64;
+
+                        let t2 = Instant::now();
+                        let vectors =
+                            compare_pairs(&comparators, &batch, &batch, &candidates);
+                        let comparison_ns = t2.elapsed().as_nanos() as u64;
+
+                        let t3 = Instant::now();
+                        let raw_vectors: Vec<Vec<f64>> =
+                            vectors.iter().map(|v| v.scores.clone()).collect();
+                        let config = reclink_core::classify::EmConfig {
+                            max_iterations,
+                            convergence_threshold,
+                            initial_p_match,
+                        };
+                        let em_result = reclink_core::classify::estimate_fellegi_sunter(
+                            &raw_vectors,
+                            &config,
+                        );
+
+                        let classifier = reclink_core::classify::FellegiSunterClassifier::new(
+                            em_result.m_probs,
+                            em_result.u_probs,
+                            4.0,
+                            -4.0,
+                        );
+
+                        let matches: Vec<_> = vectors
+                            .into_iter()
+                            .map(|v| classifier.classify(&v))
+                            .filter(|c| {
+                                c.class == reclink_core::record::MatchClass::Match
+                                    || c.class == reclink_core::record::MatchClass::Possible
+                            })
+                            .collect();
+                        let classification_ns = t3.elapsed().as_nanos() as u64;
+
+                        (blocking_ns, comparison_ns, classification_ns, matches)
+                    });
+
+                if profiling {
                     self.profiling_stats
-                        .insert("blocking".into(), t1.elapsed().as_nanos() as u64);
-                }
-
-                let t2 = Instant::now();
-                let vectors = compare_pairs(&comparators, &batch, &batch, &candidates);
-                if self.profiling {
+                        .insert("blocking".into(), blocking_ns);
                     self.profiling_stats
-                        .insert("comparison".into(), t2.elapsed().as_nanos() as u64);
-                }
-
-                let t3 = Instant::now();
-                let raw_vectors: Vec<Vec<f64>> = vectors.iter().map(|v| v.scores.clone()).collect();
-                let config = reclink_core::classify::EmConfig {
-                    max_iterations,
-                    convergence_threshold,
-                    initial_p_match,
-                };
-                let em_result =
-                    reclink_core::classify::estimate_fellegi_sunter(&raw_vectors, &config);
-
-                let classifier = reclink_core::classify::FellegiSunterClassifier::new(
-                    em_result.m_probs,
-                    em_result.u_probs,
-                    4.0,
-                    -4.0,
-                );
-
-                let matches: Vec<_> = vectors
-                    .into_iter()
-                    .map(|v| classifier.classify(&v))
-                    .filter(|c| {
-                        c.class == reclink_core::record::MatchClass::Match
-                            || c.class == reclink_core::record::MatchClass::Possible
-                    })
-                    .collect();
-                if self.profiling {
+                        .insert("comparison".into(), comparison_ns);
                     self.profiling_stats
-                        .insert("classification".into(), t3.elapsed().as_nanos() as u64);
+                        .insert("classification".into(), classification_ns);
                 }
 
                 Ok(matches
@@ -490,14 +504,14 @@ impl PyPipeline {
             _ => {
                 let t1 = Instant::now();
                 let pipeline = self.build_pipeline()?;
-                if self.profiling {
+                if profiling {
                     self.profiling_stats
                         .insert("build".into(), t1.elapsed().as_nanos() as u64);
                 }
 
                 let t2 = Instant::now();
-                let matches = pipeline.dedup(&batch);
-                if self.profiling {
+                let matches = py.allow_threads(|| pipeline.dedup(&batch));
+                if profiling {
                     self.profiling_stats
                         .insert("dedup_total".into(), t2.elapsed().as_nanos() as u64);
                 }
@@ -517,7 +531,11 @@ impl PyPipeline {
     }
 
     /// Run dedup and cluster, returning groups of record IDs.
-    fn dedup_cluster(&mut self, records: Vec<PyRef<PyRecord>>) -> PyResult<Vec<Vec<String>>> {
+    fn dedup_cluster(
+        &mut self,
+        py: Python<'_>,
+        records: Vec<PyRef<PyRecord>>,
+    ) -> PyResult<Vec<Vec<String>>> {
         let batch = self.build_record_batch(&records)?;
 
         match &self.classifier {
@@ -526,38 +544,50 @@ impl PyPipeline {
                 convergence_threshold,
                 initial_p_match,
             }) => {
+                let max_iterations = *max_iterations;
+                let convergence_threshold = *convergence_threshold;
+                let initial_p_match = *initial_p_match;
+
                 let blockers = self.build_blockers()?;
                 let comparators = self.build_comparators()?;
+                let cluster_config = self.cluster.clone();
 
-                let candidates = generate_dedup_candidates(&blockers, &batch);
-                let vectors = compare_pairs(&comparators, &batch, &batch, &candidates);
+                let clusters = py.allow_threads(|| {
+                    let candidates = generate_dedup_candidates(&blockers, &batch);
+                    let vectors =
+                        compare_pairs(&comparators, &batch, &batch, &candidates);
 
-                let raw_vectors: Vec<Vec<f64>> = vectors.iter().map(|v| v.scores.clone()).collect();
-                let config = reclink_core::classify::EmConfig {
-                    max_iterations: *max_iterations,
-                    convergence_threshold: *convergence_threshold,
-                    initial_p_match: *initial_p_match,
-                };
-                let em_result =
-                    reclink_core::classify::estimate_fellegi_sunter(&raw_vectors, &config);
+                    let raw_vectors: Vec<Vec<f64>> =
+                        vectors.iter().map(|v| v.scores.clone()).collect();
+                    let config = reclink_core::classify::EmConfig {
+                        max_iterations,
+                        convergence_threshold,
+                        initial_p_match,
+                    };
+                    let em_result = reclink_core::classify::estimate_fellegi_sunter(
+                        &raw_vectors,
+                        &config,
+                    );
 
-                let classifier = reclink_core::classify::FellegiSunterClassifier::new(
-                    em_result.m_probs,
-                    em_result.u_probs,
-                    4.0,
-                    -4.0,
-                );
+                    let classifier = reclink_core::classify::FellegiSunterClassifier::new(
+                        em_result.m_probs,
+                        em_result.u_probs,
+                        4.0,
+                        -4.0,
+                    );
 
-                let matches: Vec<_> = vectors
-                    .into_iter()
-                    .map(|v| classifier.classify(&v))
-                    .filter(|c| {
-                        c.class == reclink_core::record::MatchClass::Match
-                            || c.class == reclink_core::record::MatchClass::Possible
-                    })
-                    .collect();
+                    let matches: Vec<_> = vectors
+                        .into_iter()
+                        .map(|v| classifier.classify(&v))
+                        .filter(|c| {
+                            c.class == reclink_core::record::MatchClass::Match
+                                || c.class == reclink_core::record::MatchClass::Possible
+                        })
+                        .collect();
 
-                let clusters = cluster_matches(&self.cluster, &matches, batch.len())?;
+                    cluster_matches(&cluster_config, &matches, batch.len())
+                })?;
+
                 Ok(clusters
                     .into_iter()
                     .map(|group| {
@@ -570,7 +600,7 @@ impl PyPipeline {
             }
             _ => {
                 let pipeline = self.build_pipeline()?;
-                let clusters = pipeline.dedup_cluster(&batch);
+                let clusters = py.allow_threads(|| pipeline.dedup_cluster(&batch));
                 Ok(clusters
                     .into_iter()
                     .map(|group| {
@@ -587,6 +617,7 @@ impl PyPipeline {
     /// Run linkage between two sets of records.
     fn link(
         &mut self,
+        py: Python<'_>,
         left: Vec<PyRef<PyRecord>>,
         right: Vec<PyRef<PyRecord>>,
     ) -> PyResult<Vec<PyMatchResult>> {
@@ -599,36 +630,47 @@ impl PyPipeline {
                 convergence_threshold,
                 initial_p_match,
             }) => {
+                let max_iterations = *max_iterations;
+                let convergence_threshold = *convergence_threshold;
+                let initial_p_match = *initial_p_match;
+
                 let blockers = self.build_blockers()?;
                 let comparators = self.build_comparators()?;
 
-                let candidates = generate_link_candidates(&blockers, &left_batch, &right_batch);
-                let vectors = compare_pairs(&comparators, &left_batch, &right_batch, &candidates);
+                let matches = py.allow_threads(|| {
+                    let candidates =
+                        generate_link_candidates(&blockers, &left_batch, &right_batch);
+                    let vectors =
+                        compare_pairs(&comparators, &left_batch, &right_batch, &candidates);
 
-                let raw_vectors: Vec<Vec<f64>> = vectors.iter().map(|v| v.scores.clone()).collect();
-                let config = reclink_core::classify::EmConfig {
-                    max_iterations: *max_iterations,
-                    convergence_threshold: *convergence_threshold,
-                    initial_p_match: *initial_p_match,
-                };
-                let em_result =
-                    reclink_core::classify::estimate_fellegi_sunter(&raw_vectors, &config);
+                    let raw_vectors: Vec<Vec<f64>> =
+                        vectors.iter().map(|v| v.scores.clone()).collect();
+                    let config = reclink_core::classify::EmConfig {
+                        max_iterations,
+                        convergence_threshold,
+                        initial_p_match,
+                    };
+                    let em_result = reclink_core::classify::estimate_fellegi_sunter(
+                        &raw_vectors,
+                        &config,
+                    );
 
-                let classifier = reclink_core::classify::FellegiSunterClassifier::new(
-                    em_result.m_probs,
-                    em_result.u_probs,
-                    4.0,
-                    -4.0,
-                );
+                    let classifier = reclink_core::classify::FellegiSunterClassifier::new(
+                        em_result.m_probs,
+                        em_result.u_probs,
+                        4.0,
+                        -4.0,
+                    );
 
-                let matches: Vec<_> = vectors
-                    .into_iter()
-                    .map(|v| classifier.classify(&v))
-                    .filter(|c| {
-                        c.class == reclink_core::record::MatchClass::Match
-                            || c.class == reclink_core::record::MatchClass::Possible
-                    })
-                    .collect();
+                    vectors
+                        .into_iter()
+                        .map(|v| classifier.classify(&v))
+                        .filter(|c| {
+                            c.class == reclink_core::record::MatchClass::Match
+                                || c.class == reclink_core::record::MatchClass::Possible
+                        })
+                        .collect::<Vec<_>>()
+                });
 
                 Ok(matches
                     .into_iter()
@@ -643,7 +685,8 @@ impl PyPipeline {
             }
             _ => {
                 let pipeline = self.build_pipeline()?;
-                let matches = pipeline.link(&left_batch, &right_batch);
+                let matches =
+                    py.allow_threads(|| pipeline.link(&left_batch, &right_batch));
                 Ok(matches
                     .into_iter()
                     .map(|m| PyMatchResult {

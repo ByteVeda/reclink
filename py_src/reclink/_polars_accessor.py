@@ -6,9 +6,14 @@ Registers ``series.reclink.match_best(...)`` etc. and
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import polars as pl
 
 import reclink
+
+if TYPE_CHECKING:
+    from reclink._core import Scorer
 
 
 class ReclinkNamespace:
@@ -20,7 +25,7 @@ class ReclinkNamespace:
     def match_best(
         self,
         candidates: list[str],
-        scorer: str = "jaro_winkler",
+        scorer: Scorer = "jaro_winkler",
         threshold: float | None = None,
     ) -> pl.Series:
         """Find the best match for each value in the Series.
@@ -66,7 +71,7 @@ class ReclinkNamespace:
     def deduplicate(
         self,
         threshold: float = 0.85,
-        scorer: str = "jaro_winkler",
+        scorer: Scorer = "jaro_winkler",
     ) -> list[list[int]]:
         """Find duplicate groups within the Series by index position.
 
@@ -121,7 +126,7 @@ class ReclinkDataFrameNamespace:
         right: pl.DataFrame,
         left_on: str,
         right_on: str,
-        scorer: str = "jaro_winkler",
+        scorer: Scorer = "jaro_winkler",
         threshold: float = 0.8,
     ) -> pl.DataFrame:
         """Fuzzy join two DataFrames on string columns.

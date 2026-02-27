@@ -4,7 +4,9 @@ Built on Rust via PyO3 for maximum performance.
 """
 
 import contextlib
+from typing import TYPE_CHECKING
 
+from reclink import async_api as async_api
 from reclink import benchmark as benchmark
 from reclink import evaluation as evaluation
 from reclink import export as export
@@ -58,6 +60,9 @@ from reclink._core import (
     cdist,
     # Arrow-friendly batch operations
     cdist_arrow,
+    # CJK tokenization
+    character_tokenize,
+    character_tokenize_batch,
     # Domain preprocessors
     clean_address,
     clean_company,
@@ -86,6 +91,7 @@ from reclink._core import (
     levenshtein_align,
     levenshtein_similarity,
     levenshtein_threshold,
+    list_custom_metrics,
     longest_common_substring_length,
     longest_common_substring_similarity,
     # Batch matching
@@ -112,6 +118,8 @@ from reclink._core import (
     regex_replace,
     remove_stop_words,
     set_max_string_length,
+    smart_tokenize,
+    smart_tokenize_batch,
     smith_waterman,
     smith_waterman_similarity,
     sorensen_dice,
@@ -125,6 +133,7 @@ from reclink._core import (
     # Transliteration
     transliterate_cyrillic,
     transliterate_greek,
+    unregister_metric,
     weighted_levenshtein,
     weighted_levenshtein_similarity,
     whitespace_tokenize,
@@ -133,6 +142,71 @@ from reclink._core import (
 from reclink._core import (
     estimate_fellegi_sunter_params as estimate_fellegi_sunter,
 )
+from reclink._core import (
+    register_metric as _register_metric_raw,
+)
+
+if TYPE_CHECKING:
+    from reclink._core import (
+        CompositePreset as CompositePreset,
+    )
+    from reclink._core import (
+        DateResolution as DateResolution,
+    )
+    from reclink._core import (
+        Linkage as Linkage,
+    )
+    from reclink._core import (
+        NormalizationForm as NormalizationForm,
+    )
+    from reclink._core import (
+        PhoneticAlgorithm as PhoneticAlgorithm,
+    )
+    from reclink._core import (
+        Scorer as Scorer,
+    )
+
+
+def register_metric(name_or_func: object = None, func: object = None) -> object:
+    """Register a custom similarity metric.
+
+    Supports three calling conventions:
+
+    1. ``@register_metric("name")`` — decorator with explicit name
+    2. ``@register_metric`` — decorator using the function's ``__name__``
+    3. ``register_metric("name", func)`` — direct call
+
+    Parameters
+    ----------
+    name_or_func : str or callable
+        Either a name string or the function itself.
+    func : callable, optional
+        The metric function when called as ``register_metric("name", func)``.
+
+    Returns
+    -------
+    callable
+        The original function (unchanged) when used as a decorator.
+    """
+    if func is not None:
+        # Direct call: register_metric("name", func)
+        _register_metric_raw(str(name_or_func), func)
+        return func
+
+    if callable(name_or_func):
+        # Bare decorator: @register_metric
+        fn = name_or_func
+        _register_metric_raw(fn.__name__, fn)  # type: ignore[attr-defined]
+        return fn
+
+    # Decorator with name: @register_metric("name")
+    name = str(name_or_func)
+
+    def _decorator(fn: object) -> object:
+        _register_metric_raw(name, fn)
+        return fn
+
+    return _decorator
 
 
 def _register_pandas_accessor() -> None:
@@ -169,11 +243,14 @@ __all__ = [
     "StreamingMatcher",
     "TfIdfMatcher",
     "VpTree",
+    "async_api",
     "beider_morse",
     "benchmark",
     "caverphone",
     "cdist",
     "cdist_arrow",
+    "character_tokenize",
+    "character_tokenize_batch",
     "clean_address",
     "clean_company",
     "clean_name",
@@ -202,6 +279,7 @@ __all__ = [
     "levenshtein_align",
     "levenshtein_similarity",
     "levenshtein_threshold",
+    "list_custom_metrics",
     "longest_common_substring_length",
     "longest_common_substring_similarity",
     "match_batch",
@@ -227,8 +305,11 @@ __all__ = [
     "preprocess_batch",
     "presets",
     "regex_replace",
+    "register_metric",
     "remove_stop_words",
     "set_max_string_length",
+    "smart_tokenize",
+    "smart_tokenize_batch",
     "smith_waterman",
     "smith_waterman_similarity",
     "sorensen_dice",
@@ -242,6 +323,7 @@ __all__ = [
     "token_sort_ratio",
     "transliterate_cyrillic",
     "transliterate_greek",
+    "unregister_metric",
     "utils",
     "weighted_levenshtein",
     "weighted_levenshtein_similarity",

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use numpy::{PyArray2, PyArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -7,6 +9,63 @@ use reclink_core::metrics::{
     Levenshtein, LongestCommonSubstring, NgramSimilarity, PartialRatio, PhoneticHybrid,
     SimilarityMetric, SmithWaterman, SorensenDice, TokenSet, TokenSort, WeightedLevenshtein,
 };
+
+/// Wrapper to call a Python callable from Rust via the GIL.
+struct PyMetricWrapper {
+    func: PyObject,
+}
+
+impl PyMetricWrapper {
+    fn call(&self, a: &str, b: &str) -> f64 {
+        Python::with_gil(|py| {
+            self.func
+                .call1(py, (a, b))
+                .and_then(|r| r.extract::<f64>(py))
+                .unwrap_or(0.0)
+        })
+    }
+}
+
+// Safety: PyObject is Send when only accessed via GIL
+unsafe impl Send for PyMetricWrapper {}
+unsafe impl Sync for PyMetricWrapper {}
+
+/// Register a custom similarity metric.
+///
+/// The function must accept two strings and return a float in [0, 1].
+/// Custom metrics can be used with ``cdist``, ``match_best``, ``match_batch``,
+/// and all pipeline operations via their registered name.
+///
+/// **Limitation**: Custom metrics are GIL-serialized in batch operations —
+/// no parallelism benefit. Pipelines using custom metrics cannot be serialized.
+#[pyfunction]
+fn register_metric(name: String, func: PyObject) -> PyResult<()> {
+    // Validate by doing a test call
+    Python::with_gil(|py| -> PyResult<()> {
+        let result = func.call1(py, ("test", "test"))?;
+        let _: f64 = result
+            .extract(py)
+            .map_err(|_| PyValueError::new_err("metric function must return a float"))?;
+        Ok(())
+    })?;
+
+    let wrapper = Arc::new(PyMetricWrapper { func });
+    let metric_fn: metrics::CustomMetricFn = Arc::new(move |a, b| wrapper.call(a, b));
+    metrics::register_custom_metric(&name, metric_fn)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Unregister a custom metric. Returns True if it existed.
+#[pyfunction]
+fn unregister_metric(name: &str) -> bool {
+    metrics::unregister_custom_metric(name)
+}
+
+/// List all registered custom metric names.
+#[pyfunction]
+fn list_custom_metrics() -> Vec<String> {
+    metrics::list_custom_metrics()
+}
 
 /// Compute Levenshtein edit distance between two strings.
 #[pyfunction]
@@ -243,6 +302,7 @@ fn damerau_levenshtein_threshold(a: &str, b: &str, max_distance: usize) -> Optio
 #[pyfunction]
 #[pyo3(signature = (query, candidates, scorer="jaro_winkler", threshold=None, workers=None))]
 fn match_best(
+    py: Python<'_>,
     query: &str,
     candidates: Vec<String>,
     scorer: &str,
@@ -260,10 +320,11 @@ fn match_best(
     }
 
     let refs: Vec<&str> = candidates.iter().map(|s| s.as_str()).collect();
-    Ok(
+    // Release the GIL so Rayon threads can re-acquire it for custom metrics.
+    let result = py.allow_threads(|| {
         reclink_core::metrics::batch::match_best(query, &refs, &metric, threshold)
-            .map(|r| (candidates[r.index].clone(), r.score, r.index)),
-    )
+    });
+    Ok(result.map(|r| (candidates[r.index].clone(), r.score, r.index)))
 }
 
 /// Find all matches for a query among candidates, sorted by descending score.
@@ -272,6 +333,7 @@ fn match_best(
 #[pyfunction]
 #[pyo3(signature = (query, candidates, scorer="jaro_winkler", threshold=None, limit=None, workers=None))]
 fn match_batch(
+    py: Python<'_>,
     query: &str,
     candidates: Vec<String>,
     scorer: &str,
@@ -290,7 +352,10 @@ fn match_batch(
     }
 
     let refs: Vec<&str> = candidates.iter().map(|s| s.as_str()).collect();
-    let mut results = reclink_core::metrics::batch::match_batch(query, &refs, &metric, threshold);
+    // Release the GIL so Rayon threads can re-acquire it for custom metrics.
+    let mut results = py.allow_threads(|| {
+        reclink_core::metrics::batch::match_batch(query, &refs, &metric, threshold)
+    });
 
     if let Some(lim) = limit {
         results.truncate(lim);
@@ -328,16 +393,19 @@ fn cdist<'py>(
     let cols = b.len();
 
     let b_ref = &b;
-    let flat: Vec<f64> = (0..rows)
-        .into_par_iter()
-        .flat_map(|i| {
-            let metric = &metric;
-            let a_str = &a[i];
-            (0..cols)
-                .map(move |j| metric.similarity(a_str, &b_ref[j]))
-                .collect::<Vec<f64>>()
-        })
-        .collect();
+    // Release the GIL so Rayon threads can re-acquire it for custom metrics.
+    let flat: Vec<f64> = py.allow_threads(|| {
+        (0..rows)
+            .into_par_iter()
+            .flat_map(|i| {
+                let metric = &metric;
+                let a_str = &a[i];
+                (0..cols)
+                    .map(move |j| metric.similarity(a_str, &b_ref[j]))
+                    .collect::<Vec<f64>>()
+            })
+            .collect()
+    });
 
     let array = numpy::PyArray1::from_vec(py, flat)
         .reshape([rows, cols])
@@ -429,5 +497,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(levenshtein_align, m)?)?;
     m.add_function(wrap_pyfunction!(set_max_string_length, m)?)?;
     m.add_function(wrap_pyfunction!(get_max_string_length, m)?)?;
+    m.add_function(wrap_pyfunction!(register_metric, m)?)?;
+    m.add_function(wrap_pyfunction!(unregister_metric, m)?)?;
+    m.add_function(wrap_pyfunction!(list_custom_metrics, m)?)?;
     Ok(())
 }

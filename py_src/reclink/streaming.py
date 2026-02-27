@@ -12,6 +12,8 @@ from reclink._core import PyStreamingMatcher
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
+    from reclink._core import Scorer
+
 
 def _enumerate_chunks(iterable: Iterable[str], chunk_size: int) -> Iterator[tuple[int, list[str]]]:
     """Yield (chunk_start_index, chunk) tuples from an iterable."""
@@ -30,7 +32,7 @@ def _enumerate_chunks(iterable: Iterable[str], chunk_size: int) -> Iterator[tupl
 def match_stream(
     query: str,
     candidates: Iterable[str],
-    scorer: str = "jaro_winkler",
+    scorer: Scorer = "jaro_winkler",
     threshold: float | None = None,
     chunk_size: int = 1000,
 ) -> Iterator[tuple[str, float, int]]:

@@ -5,9 +5,14 @@ Registers ``df["col"].reclink.match_best(...)`` and ``df.reclink.fuzzy_merge(...
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
 
 import reclink
+
+if TYPE_CHECKING:
+    from reclink._core import Scorer
 
 
 @pd.api.extensions.register_series_accessor("reclink")
@@ -20,7 +25,7 @@ class ReclinkSeriesAccessor:
     def match_best(
         self,
         candidates: list[str],
-        scorer: str = "jaro_winkler",
+        scorer: Scorer = "jaro_winkler",
         threshold: float | None = None,
     ) -> pd.Series:
         """Find the best match for each value in the Series.
@@ -60,7 +65,7 @@ class ReclinkSeriesAccessor:
     def deduplicate(
         self,
         threshold: float = 0.85,
-        scorer: str = "jaro_winkler",
+        scorer: Scorer = "jaro_winkler",
     ) -> list[list[int]]:
         """Find duplicate groups within the Series by index position.
 
@@ -116,7 +121,7 @@ class ReclinkDataFrameAccessor:
         right: pd.DataFrame,
         left_on: str,
         right_on: str,
-        scorer: str = "jaro_winkler",
+        scorer: Scorer = "jaro_winkler",
         threshold: float = 0.8,
     ) -> pd.DataFrame:
         """Fuzzy join two DataFrames on string columns.

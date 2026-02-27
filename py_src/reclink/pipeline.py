@@ -14,6 +14,8 @@ from reclink._core import PyPipeline, PyRecord
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from reclink._core import DateResolution, Linkage, PhoneticAlgorithm, Scorer
+
 
 class ReclinkPipeline:
     """Builder-pattern pipeline for record linkage and deduplication.
@@ -250,7 +252,9 @@ class PipelineBuilder:
         self._inner.block_exact(field)
         return self
 
-    def block_phonetic(self, field: str, algorithm: str = "soundex") -> PipelineBuilder:
+    def block_phonetic(
+        self, field: str, algorithm: PhoneticAlgorithm = "soundex"
+    ) -> PipelineBuilder:
         """Block on phonetic encoding of a field.
 
         Parameters
@@ -291,7 +295,7 @@ class PipelineBuilder:
         self._inner.block_qgram(field, q, threshold)
         return self
 
-    def compare_string(self, field: str, metric: str = "jaro_winkler") -> PipelineBuilder:
+    def compare_string(self, field: str, metric: Scorer = "jaro_winkler") -> PipelineBuilder:
         """Compare a text field using a string similarity metric.
 
         Parameters
@@ -395,7 +399,9 @@ class PipelineBuilder:
         self._inner.classify_weighted_bands(list(weights), upper, lower)
         return self
 
-    def compare_phonetic(self, field: str, algorithm: str = "soundex") -> PipelineBuilder:
+    def compare_phonetic(
+        self, field: str, algorithm: PhoneticAlgorithm = "soundex"
+    ) -> PipelineBuilder:
         """Compare a field using phonetic encoding (binary: match → 1.0, else → 0.0).
 
         Parameters
@@ -459,7 +465,7 @@ class PipelineBuilder:
         return self
 
     def cluster_hierarchical(
-        self, linkage: str = "single", threshold: float = 0.5
+        self, linkage: Linkage = "single", threshold: float = 0.5
     ) -> PipelineBuilder:
         """Enable hierarchical agglomerative clustering of results.
 
@@ -493,7 +499,7 @@ class PipelineBuilder:
         field: str,
         t_tight: float = 0.9,
         t_loose: float = 0.5,
-        metric: str = "jaro_winkler",
+        metric: Scorer = "jaro_winkler",
     ) -> PipelineBuilder:
         """Block using canopy clustering with two thresholds.
 
@@ -524,7 +530,7 @@ class PipelineBuilder:
         self._inner.block_numeric(field, bucket_size)
         return self
 
-    def block_date(self, field: str, resolution: str = "year") -> PipelineBuilder:
+    def block_date(self, field: str, resolution: DateResolution = "year") -> PipelineBuilder:
         """Block by truncating a date field to the given resolution.
 
         Parameters

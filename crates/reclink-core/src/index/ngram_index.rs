@@ -131,6 +131,25 @@ impl NgramIndex {
         self.len() == 0
     }
 
+    /// Estimates the heap memory usage of this index in bytes.
+    #[must_use]
+    pub fn memory_usage(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>();
+        // strings vec
+        for s in &self.strings {
+            bytes += std::mem::size_of::<String>() + s.capacity();
+        }
+        // inverted index map
+        for (key, postings) in &self.index {
+            bytes += std::mem::size_of::<String>() + key.capacity();
+            bytes += std::mem::size_of::<Vec<usize>>()
+                + postings.capacity() * std::mem::size_of::<usize>();
+        }
+        // deleted set
+        bytes += self.deleted.capacity() * std::mem::size_of::<usize>();
+        bytes
+    }
+
     fn count_shared(&self, query_ngrams: &[String]) -> Vec<(usize, usize)> {
         let mut counts: AHashMap<usize, usize> = AHashMap::new();
         for ng in query_ngrams {

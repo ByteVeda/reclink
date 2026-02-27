@@ -101,6 +101,7 @@ fn metric_name(m: &Metric) -> Option<String> {
         Metric::NgramSimilarity(_) => "ngram_similarity",
         Metric::SmithWaterman(_) => "smith_waterman",
         Metric::PhoneticHybrid(_) => "phonetic_hybrid",
+        Metric::Custom { name, .. } => return Some(name.clone()),
     };
     Some(name.to_string())
 }
