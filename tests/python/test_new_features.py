@@ -343,3 +343,109 @@ class TestMinHashIndex:
         found_names = [r[1] for r in results]
         assert "Jonathan Smith" in found_names
         assert "Jonathon Smith" in found_names
+
+
+# ---------------------------------------------------------------------------
+# T5-2: CJK Tokenization
+# ---------------------------------------------------------------------------
+
+
+class TestCjkTokenization:
+    def test_character_tokenize_cjk(self) -> None:
+        tokens = reclink.character_tokenize("東京タワー")
+        assert tokens == ["東", "京", "タ", "ワ", "ー"]
+
+    def test_character_tokenize_latin(self) -> None:
+        tokens = reclink.character_tokenize("hello")
+        assert tokens == ["h", "e", "l", "l", "o"]
+
+    def test_character_tokenize_strips_whitespace(self) -> None:
+        tokens = reclink.character_tokenize("a b")
+        assert tokens == ["a", "b"]
+
+    def test_character_tokenize_empty(self) -> None:
+        assert reclink.character_tokenize("") == []
+
+    def test_smart_tokenize_chinese(self) -> None:
+        tokens = reclink.smart_tokenize("你好世界")
+        assert tokens == ["你", "好", "世", "界"]
+
+    def test_smart_tokenize_mixed(self) -> None:
+        tokens = reclink.smart_tokenize("Hello 世界")
+        assert tokens == ["Hello", "世", "界"]
+
+    def test_smart_tokenize_latin(self) -> None:
+        tokens = reclink.smart_tokenize("hello world")
+        assert tokens == ["hello", "world"]
+
+    def test_smart_tokenize_japanese(self) -> None:
+        tokens = reclink.smart_tokenize("東京タワー")
+        assert len(tokens) == 5
+
+    def test_smart_tokenize_empty(self) -> None:
+        assert reclink.smart_tokenize("") == []
+
+    def test_character_tokenize_batch(self) -> None:
+        results = reclink.character_tokenize_batch(["ab", "你好"])
+        assert results == [["a", "b"], ["你", "好"]]
+
+    def test_smart_tokenize_batch(self) -> None:
+        results = reclink.smart_tokenize_batch(["Hello 世界", "test"])
+        assert results == [["Hello", "世", "界"], ["test"]]
+
+
+# ---------------------------------------------------------------------------
+# T5-4: Index Memory Usage Reporting
+# ---------------------------------------------------------------------------
+
+
+class TestIndexMemoryUsage:
+    def test_bk_tree_memory_usage(self) -> None:
+        tree = reclink.BkTree.build(["hello", "world", "test"], "levenshtein")
+        usage = tree.memory_usage()
+        assert isinstance(usage, int)
+        assert usage > 0
+
+    def test_bk_tree_memory_usage_human(self) -> None:
+        tree = reclink.BkTree.build(["hello", "world"], "levenshtein")
+        human = tree.memory_usage_human()
+        assert isinstance(human, str)
+        assert any(unit in human for unit in ["B", "KB", "MB", "GB"])
+
+    def test_vp_tree_memory_usage(self) -> None:
+        tree = reclink.VpTree.build(["hello", "world", "test"], "jaro_winkler")
+        usage = tree.memory_usage()
+        assert isinstance(usage, int)
+        assert usage > 0
+
+    def test_vp_tree_memory_usage_human(self) -> None:
+        tree = reclink.VpTree.build(["hello", "world"], "jaro_winkler")
+        human = tree.memory_usage_human()
+        assert isinstance(human, str)
+
+    def test_ngram_index_memory_usage(self) -> None:
+        index = reclink.NgramIndex.build(["hello", "world", "test"], 2)
+        usage = index.memory_usage()
+        assert isinstance(usage, int)
+        assert usage > 0
+
+    def test_ngram_index_memory_usage_human(self) -> None:
+        index = reclink.NgramIndex.build(["hello", "world"], 2)
+        human = index.memory_usage_human()
+        assert isinstance(human, str)
+
+    def test_minhash_index_memory_usage(self) -> None:
+        index = MinHashIndex.build(["hello", "world", "test"], num_hashes=50, num_bands=10)
+        usage = index.memory_usage()
+        assert isinstance(usage, int)
+        assert usage > 0
+
+    def test_minhash_index_memory_usage_human(self) -> None:
+        index = MinHashIndex.build(["hello", "world"], num_hashes=50, num_bands=10)
+        human = index.memory_usage_human()
+        assert isinstance(human, str)
+
+    def test_memory_grows_with_data(self) -> None:
+        small = reclink.NgramIndex.build(["a", "b"], 2)
+        large = reclink.NgramIndex.build([f"string_{i}" for i in range(100)], 2)
+        assert large.memory_usage() > small.memory_usage()
