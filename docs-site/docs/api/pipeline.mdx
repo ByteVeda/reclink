@@ -28,6 +28,18 @@ matches = pipeline.dedup(df, id_column="id")
 
 The pipeline accepts **pandas DataFrames**, **polars DataFrames**, or **lists of dicts** as input, and returns results in the same container type.
 
+```mermaid
+flowchart TD
+    INPUT["DataFrame / list[dict]"] --> PRE[Preprocess Fields]
+    PRE --> BLK["Blocking → Candidate Pairs"]
+    BLK --> CMP["Compare → Score Vectors"]
+    CMP --> CLF["Classify → match / possible / non_match"]
+    CLF --> OUT{Cluster?}
+    OUT -- dedup --> MATCH[MatchResults]
+    OUT -- dedup_cluster --> CLUST[ClusterResults]
+    OUT -- link --> LINK[MatchResults]
+```
+
 ---
 
 ## Builder

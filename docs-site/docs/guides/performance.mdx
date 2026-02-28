@@ -215,6 +215,23 @@ index = MinHashIndex.load("names.minhash")
   ]}
 />
 
+```mermaid
+---
+config:
+  layout: dagre
+---
+flowchart TD
+    START[Need sub-linear search?] --> FIT{Dataset fits in RAM?}
+    FIT -- No --> MMAP[MmapNgramIndex]
+    FIT -- Yes --> EXACT{Need exact results?}
+    EXACT -- No, approximate OK --> APPROX{Dataset size?}
+    APPROX -- "< 100k" --> NGRAM[NgramIndex]
+    APPROX -- "> 100k" --> MINHASH[MinHashIndex]
+    EXACT -- Yes --> METRIC{Metric type?}
+    METRIC -- "Edit distance" --> BK[BkTree]
+    METRIC -- "Any metric" --> VP[VpTree]
+```
+
 ## 4. Blocking in pipelines
 
 Blocking is the single highest-leverage optimization for deduplication. Without blocking, deduplication is O(n^2). With blocking, it drops to roughly O(n).

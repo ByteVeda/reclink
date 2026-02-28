@@ -37,6 +37,22 @@ levenshtein_similarity("kitten", "sitting")  # 0.571 (similarity)
   ]}
 />
 
+```mermaid
+---
+config:
+  layout: dagre
+---
+flowchart LR
+    M["String Metrics"] --> ED["Edit Distance"] & SIM["Similarity"] & TB["Token-based"] & SUB["Subsequence"] & AL["Alignment"] & PH["Phonetic"] & HY["Hybrid"]
+    ED --> ED1["Levenshtein"] & ED2["Damerau-Levenshtein"] & ED3["Hamming"]
+    SIM --> SIM1["Jaro"] & SIM2["Jaro-Winkler"]
+    TB --> TB1["Cosine"] & TB2["Jaccard"] & TB3["Token Sort/Set"]
+    SUB --> SUB1["LCS"] & SUB2["Longest Common Substring"]
+    AL --> AL1["Smith-Waterman"]
+    PH --> PH1["Soundex"] & PH2["Metaphone"] & PH3["Beider-Morse"]
+    HY --> HY1["phonetic_hybrid"]
+```
+
 ## Phonetic algorithms
 
 Phonetic algorithms encode strings by how they sound. Two names with the same phonetic code are likely the same name, even if spelled differently:
@@ -53,6 +69,21 @@ Different algorithms suit different languages and use cases. See the [Phonetic A
 ## Record linkage pipeline
 
 Record linkage finds matching records across one or two datasets. reclink's pipeline has four stages:
+
+```mermaid
+---
+config:
+  layout: dagre
+---
+flowchart TB
+    A["Raw Records"] --> B["Preprocess"]
+    B --> C["Block"]
+    C --> D["Compare"]
+    D --> E["Classify"]
+    E --> F{"Cluster?"}
+    F -- Yes --> G["Clusters"]
+    F -- No --> H["Match Pairs"]
+```
 
 ### 1. Preprocessing
 

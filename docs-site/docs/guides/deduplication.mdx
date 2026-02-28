@@ -103,6 +103,22 @@ Without blocking, deduplicating 100,000 records requires comparing every pair: 1
 
 Blocking groups records into buckets (or "blocks") and only compares records within the same block. Records that could never match are never compared.
 
+```mermaid
+flowchart LR
+    subgraph Without Blocking
+        direction TB
+        NB[N records] --> NB2["N × (N-1) / 2 pairs<br/>O(n²) comparisons"]
+    end
+    subgraph With Blocking
+        direction TB
+        B1[Block A] --> BA["pairs within A"]
+        B2[Block B] --> BB["pairs within B"]
+        B3[Block C] --> BC["pairs within C"]
+    end
+    NB2 -.-> |"100k records = 5 billion"| X1["Slow"]
+    BA & BB & BC -.-> |"100k records ≈ 5 million"| X2["Fast"]
+```
+
 <Table
   columns={["Strategy", "How it works", "Best for"]}
   rows={[
