@@ -1,0 +1,521 @@
+---
+sidebar_position: 5
+title: Performance Optimization
+description: Guide to maximizing reclink performance, covering metric selection, index structures, blocking, batch operations, profiling, and benchmarking.
+---
+
+# Performance Optimization
+
+reclink is built in Rust and parallelised with Rayon, so it is fast out of the box. But when you scale to millions of records or billions of comparisons, choosing the right data structures and algorithms matters enormously. This guide covers every lever you can pull.
+
+## 1. Choose the right metric
+
+Not all metrics are equally fast. Here is a rough speed ranking (fastest first):
+
+<Table
+  columns={["Metric", "Relative speed", "Best for"]}
+  rows={[
+    ["`jaro` / `jaro_winkler`", "Fastest", "Names, short strings"],
+    ["`hamming`", "Very fast", "Fixed-length codes"],
+    ["`cosine` (n=2)", "Fast", "General text"],
+    ["`jaccard`", "Fast", "Token overlap"],
+    ["`sorensen_dice`", "Fast", "Token overlap"],
+    ["`token_sort_ratio`", "Moderate", "Word-order-invariant matching"],
+    ["`levenshtein`", "Moderate", "Typo detection"],
+    ["`damerau_levenshtein`", "Moderate", "Typo + transposition detection"],
+    ["`token_set_ratio`", "Moderate", "Extra/missing tokens"],
+    ["`smith_waterman`", "Slower", "Flexible gap alignment"],
+    ["`lcs`", "Slower", "Subsequence matching"],
+  ]}
+/>
+
+**Rule of thumb:** For name matching, `jaro_winkler` gives the best quality-to-speed ratio. For longer text, `cosine` or `jaccard` is a better fit.
+
+Benchmark on your actual data to confirm:
+
+```python
+from reclink.benchmark import benchmark_metrics
+
+pairs = [
+    ("John Smith", "Jon Smyth"),
+    ("Jane Doe", "Janet Doe"),
+    ("Robert Johnson", "Bob Johnson"),
+    ("Mohammed Ali", "Muhammad Ali"),
+]
+
+results = benchmark_metrics(
+    pairs,
+    metrics=["jaro_winkler", "levenshtein", "cosine", "token_sort"],
+    n=10_000,
+)
+
+for r in results["results"]:
+    print(f"{r['metric']:>20s}: {r['per_pair_ns']:>8.1f} ns/pair  ({r['pairs_per_sec']:>12,} pairs/sec)")
+```
+
+## 2. Early termination
+
+When you only need to know if two strings are within a certain distance, threshold variants short-circuit as soon as the answer is "no" -- potentially skipping most of the computation:
+
+```python
+from reclink import levenshtein, levenshtein_threshold
+
+# Standard: always computes the full distance
+levenshtein("kitten", "sitting")  # 3
+
+# Threshold: returns None immediately if distance > max_distance
+levenshtein_threshold("kitten", "sitting", max_distance=2)  # None (fast bail-out)
+levenshtein_threshold("kitten", "sitten", max_distance=2)   # 1 (within threshold)
+```
+
+The Damerau-Levenshtein variant also supports thresholds:
+
+```python
+from reclink import damerau_levenshtein_threshold
+
+damerau_levenshtein_threshold("abc", "acb", max_distance=1)  # 1 (transposition)
+damerau_levenshtein_threshold("abc", "xyz", max_distance=1)  # None (bail-out)
+```
+
+This is especially valuable when scanning a large candidate list -- most candidates are non-matches and can be rejected early.
+
+## 3. Index structures
+
+Linear scanning (`match_best`, `match_batch`) is O(n) per query. For large reference datasets, sub-linear index structures provide massive speedups.
+
+### BK-tree
+
+A BK-tree partitions strings by edit distance, enabling exact threshold search in sub-linear time.
+
+```python
+from reclink import BkTree
+
+# Build the index (one-time cost)
+names = ["John Smith", "Jane Doe", "Jon Smyth", "Robert Johnson", ...]  # thousands of names
+tree = BkTree.build(names, metric="levenshtein")
+
+# Find all strings within edit distance 2
+results = tree.find_within("Jon Smith", max_distance=2)
+# [(string, index, distance), ...]
+
+# Find the 5 nearest neighbors
+nearest = tree.find_nearest("Jon Smith", k=5)
+
+# Persist to disk
+tree.save("names.bktree")
+tree = BkTree.load("names.bktree")
+
+# Check memory usage
+print(tree.memory_usage_human())  # "2.4 MB"
+```
+
+**Best for:** Edit-distance metrics (Levenshtein, Damerau-Levenshtein). Not suitable for metrics like Jaro-Winkler that do not satisfy the triangle inequality in distance form.
+
+### VP-tree
+
+A Vantage-Point tree works with any metric and supports both range search and k-nearest-neighbor queries:
+
+```python
+from reclink import VpTree
+
+tree = VpTree.build(names, metric="jaro_winkler")
+
+# Range search: all strings with similarity distance <= 0.2 (i.e., similarity >= 0.8)
+results = tree.find_within("Jon Smith", max_distance=0.2)
+
+# k-nearest neighbors
+nearest = tree.find_nearest("Jon Smith", k=10)
+
+# Persist
+tree.save("names.vptree")
+tree = VpTree.load("names.vptree")
+```
+
+**Best for:** Any metric. Slightly slower than BK-tree for edit distance, but much more flexible.
+
+### N-gram index
+
+An n-gram index inverts the n-gram-to-string mapping for fast approximate lookup:
+
+```python
+from reclink import NgramIndex
+
+index = NgramIndex.build(names, n=3)  # trigram index
+
+# Find strings sharing at least 2 trigrams with the query
+results = index.search("Jon Smith", threshold=2)
+# [(string, index, shared_ngrams), ...]
+
+# Top-k by shared n-grams
+top = index.search_top_k("Jon Smith", k=10)
+
+# Persist
+index.save("names.ngram")
+index = NgramIndex.load("names.ngram")
+```
+
+**Best for:** Fast candidate generation before applying an expensive metric. The n-gram overlap is a cheap proxy for similarity.
+
+### MmapNgramIndex -- larger than RAM
+
+For datasets too large to fit in memory, `MmapNgramIndex` uses memory-mapped files:
+
+```python
+from reclink import MmapNgramIndex
+
+# Build and persist (streams data to disk)
+MmapNgramIndex.build_and_save(names, n=3, path="names.mmap_ngram")
+
+# Open without loading everything into RAM
+index = MmapNgramIndex.open("names.mmap_ngram")
+
+results = index.search("Jon Smith", threshold=2)
+top = index.search_top_k("Jon Smith", k=10)
+
+print(index.memory_usage_human())  # reports resident memory, not file size
+```
+
+**Best for:** Datasets with millions or tens of millions of strings where a regular NgramIndex would exhaust RAM.
+
+### MinHash/LSH
+
+Locality-Sensitive Hashing provides approximate nearest-neighbor search with tunable accuracy:
+
+```python
+from reclink import MinHashIndex
+
+index = MinHashIndex.build(
+    names,
+    num_hashes=128,     # signature length (more = more accurate, more memory)
+    num_bands=16,       # banding (more bands = higher recall, more candidates)
+    shingle_size=3,     # character n-gram size for shingling
+)
+
+# Query: find approximate neighbors above similarity threshold
+results = index.query("Jon Smith", threshold=0.5)
+# [(index, string, estimated_similarity), ...]
+
+# Persist
+index.save("names.minhash")
+index = MinHashIndex.load("names.minhash")
+```
+
+**Best for:** Very large datasets (millions+) where exact search is too slow. Trades accuracy for speed -- some true matches may be missed.
+
+### Choosing the right index
+
+<Table
+  columns={["Index", "Query time", "Memory", "Exact?", "Metric support"]}
+  rows={[
+    ["`BkTree`", "O(n^0.6) typical", "Moderate", "Yes", "Edit distance only"],
+    ["`VpTree`", "O(n^0.6) typical", "Moderate", "Yes", "Any metric"],
+    ["`NgramIndex`", "O(1) amortised", "Higher", "No (approximate)", "N-gram overlap"],
+    ["`MmapNgramIndex`", "O(1) amortised", "Low (disk)", "No (approximate)", "N-gram overlap"],
+    ["`MinHashIndex`", "O(1) amortised", "Moderate", "No (approximate)", "Jaccard-like"],
+  ]}
+/>
+
+## 4. Blocking in pipelines
+
+Blocking is the single highest-leverage optimization for deduplication. Without blocking, deduplication is O(n^2). With blocking, it drops to roughly O(n).
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("last_name", ["fold_case"])
+    # Without blocking: 100k records = 5 billion comparisons
+    # With blocking:    100k records = ~5 million comparisons
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+```
+
+### Blocking strategy comparison
+
+<Table
+  columns={["Strategy", "Reduction ratio", "False negatives", "Best for"]}
+  rows={[
+    ["`block_exact`", "Very high", "High (misses typos)", "Clean categorical fields"],
+    ["`block_phonetic`", "High", "Low for names", "Person names"],
+    ["`block_sorted_neighborhood`", "Moderate", "Moderate", "Partially sorted data"],
+    ["`block_qgram`", "Moderate", "Low", "Fields with typos"],
+    ["`block_lsh`", "High", "Moderate (probabilistic)", "Large text fields"],
+    ["`block_canopy`", "Configurable", "Configurable", "Any similarity metric"],
+  ]}
+/>
+
+### Multi-pass blocking
+
+Combine multiple strategies for higher recall. The pipeline takes the union of all candidate pairs:
+
+```python
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("last_name", ["fold_case"])
+    .preprocess("city", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")  # catch name variants
+    .block_exact("city")                                # catch exact city matches
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+```
+
+## 5. Batch operations and parallelism
+
+reclink's batch operations use Rayon to parallelise across all CPU cores automatically.
+
+### `cdist` -- all-pairs similarity matrix
+
+```python
+from reclink import cdist
+
+# Parallelised across all cores
+matrix = cdist(
+    ["John", "Jane", "Bob"],
+    ["Jon", "Janet", "Robert"],
+    scorer="jaro_winkler",
+    workers=None,  # None = all cores (default)
+)
+# Returns a numpy 2D array
+```
+
+### `match_batch` -- parallel top-k search
+
+```python
+from reclink import match_batch
+
+results = match_batch(
+    "Jon Smith",
+    candidates,          # can be millions of strings
+    scorer="jaro_winkler",
+    threshold=0.8,
+    limit=10,
+    workers=None,        # all cores
+)
+```
+
+### Arrow batch API for DataFrame workflows
+
+For DataFrame-native workflows, the Arrow batch API avoids numpy overhead:
+
+```python
+from reclink import cdist_arrow, match_best_arrow, match_batch_arrow
+
+# Returns a flat list instead of numpy array
+scores = cdist_arrow(["John", "Jane"], ["Jon", "Janet"], scorer="jaro_winkler")
+
+# Arrow-friendly match operations
+best = match_best_arrow("Jon Smith", candidates, scorer="jaro_winkler", threshold=0.8)
+batch = match_batch_arrow("Jon Smith", candidates, scorer="jaro_winkler", threshold=0.8)
+```
+
+## 6. Safety limits
+
+Prevent accidental O(n^2) blowups on very long strings:
+
+```python
+from reclink import set_max_string_length, get_max_string_length
+
+# Default is usually generous. Set a tighter limit for your use case:
+set_max_string_length(1000)  # reject strings longer than 1000 chars
+print(get_max_string_length())  # 1000
+```
+
+This is particularly important when processing user-supplied data that might contain entire documents instead of names.
+
+## 7. Pipeline profiling
+
+Enable profiling to see exactly where time is spent:
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("first_name", ["fold_case"])
+    .preprocess("last_name", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+    .with_profiling()
+)
+
+matches = pipeline.dedup(df)
+
+# Per-stage timing in nanoseconds
+stats = pipeline.profiling_stats
+for stage, ns in stats.items():
+    ms = ns / 1_000_000
+    print(f"{stage:>20s}: {ms:>8.2f} ms")
+
+# Example output:
+#    preprocessing:     1.23 ms
+#         blocking:     4.56 ms
+#       comparison:    89.12 ms    <-- bottleneck
+#   classification:     0.34 ms
+```
+
+If `comparison` dominates (it usually does), consider:
+- Using a faster metric (`jaro_winkler` instead of `smith_waterman`)
+- Adding stronger blocking to reduce candidate pairs
+- Reducing the number of compared fields
+
+If `blocking` dominates, consider:
+- Using a simpler blocking strategy (`block_exact` instead of `block_canopy`)
+- Reducing the blocking field's cardinality via preprocessing
+
+## 8. Benchmarking
+
+### Benchmark individual metrics
+
+```python
+from reclink.benchmark import benchmark_metrics
+
+pairs = [
+    ("John Smith", "Jon Smyth"),
+    ("Jane Doe", "Janet Doe"),
+    ("Mohammed Ali", "Muhammad Ali"),
+    ("Robert Johnson", "Bob Johnson"),
+    ("Maria Garcia", "Maria Garcia Lopez"),
+]
+
+results = benchmark_metrics(pairs, n=10_000)
+
+print(f"{'Metric':>25s}  {'ns/pair':>10s}  {'pairs/sec':>14s}")
+print("-" * 55)
+for r in results["results"]:
+    print(f"{r['metric']:>25s}  {r['per_pair_ns']:>10.1f}  {r['pairs_per_sec']:>14,}")
+```
+
+Example output:
+
+```
+                   Metric      ns/pair       pairs/sec
+-------------------------------------------------------
+             jaro_winkler        85.2     11,737,089
+                     jaro        89.1     11,223,344
+                   cosine       142.3      7,027,405
+                  jaccard       156.8      6,377,551
+            sorensen_dice       161.2      6,203,473
+               token_sort       234.5      4,264,392
+              levenshtein       267.8      3,734,130
+     damerau_levenshtein        312.4      3,201,024
+                token_set       345.6      2,893,518
+           smith_waterman       567.8      1,761,179
+```
+
+### Benchmark a full pipeline
+
+```python
+from reclink.benchmark import benchmark_pipeline
+from reclink.pipeline import ReclinkPipeline
+import pandas as pd
+
+# Build a pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("first_name", ["fold_case"])
+    .preprocess("last_name", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+
+# Benchmark it
+results = benchmark_pipeline(pipeline, df, n=100)
+print(f"Per run:    {results['per_run_ns'] / 1_000_000:.2f} ms")
+print(f"Throughput: {results['runs_per_sec']:.1f} runs/sec")
+print(f"Records:    {results['n_records']}")
+print(f"Matches:    {results['n_matches']}")
+```
+
+## 9. Custom metrics and the GIL
+
+Custom Python metrics acquire the GIL, preventing parallel execution. This can be 10-50x slower than built-in metrics on batch operations:
+
+```python
+from reclink import register_metric, cdist
+import time
+
+# Custom metric (GIL-bound)
+@register_metric("custom_jw")
+def custom_jw(a: str, b: str) -> float:
+    # Reimplements jaro_winkler in Python
+    ...
+    return score
+
+# Benchmark: built-in vs. custom
+a = ["string"] * 1000
+b = ["strong"] * 1000
+
+start = time.perf_counter()
+cdist(a, b, scorer="jaro_winkler")   # built-in, parallel
+builtin_time = time.perf_counter() - start
+
+start = time.perf_counter()
+cdist(a, b, scorer="custom_jw")      # custom, GIL-bound
+custom_time = time.perf_counter() - start
+
+print(f"Built-in: {builtin_time:.3f}s")
+print(f"Custom:   {custom_time:.3f}s")
+print(f"Slowdown: {custom_time / builtin_time:.1f}x")
+```
+
+**Recommendations:**
+- Prototype with custom metrics for correctness
+- Replace with built-in metrics + preprocessing for production
+- If you must use a custom metric, keep the Python function as minimal as possible
+
+## 10. Serialization and reuse
+
+Save and reload pipelines and indexes to avoid rebuilding:
+
+```python
+# Pipeline serialization
+pipeline.to_file("pipeline.json")
+pipeline = ReclinkPipeline.from_file("pipeline.json")
+
+# Index serialization
+tree = VpTree.build(names, metric="jaro_winkler")
+tree.save("names.vptree")
+tree = VpTree.load("names.vptree")
+
+# Memory-mapped indexes persist automatically
+MmapNgramIndex.build_and_save(names, n=3, path="names.mmap")
+index = MmapNgramIndex.open("names.mmap")  # near-instant open
+```
+
+## Quick reference: optimization checklist
+
+1. **Use `jaro_winkler`** for names, `cosine` or `jaccard` for longer text
+2. **Use threshold variants** (`levenshtein_threshold`) when filtering candidates
+3. **Add blocking** to every pipeline -- even simple `block_exact` on one field helps
+4. **Use multi-pass blocking** for higher recall without sacrificing speed
+5. **Use index structures** (BkTree, VpTree, NgramIndex) for large reference lookups
+6. **Use MmapNgramIndex** when your dataset does not fit in RAM
+7. **Use batch operations** (`cdist`, `match_batch`) -- they parallelise via Rayon
+8. **Profile your pipeline** with `with_profiling()` to find the bottleneck
+9. **Benchmark with your actual data** using `benchmark_metrics` and `benchmark_pipeline`
+10. **Avoid custom metrics on hot paths** -- the GIL prevents parallelism
+11. **Set `set_max_string_length`** to prevent accidental quadratic blowup on long inputs
+12. **Serialize indexes and pipelines** to avoid rebuilding on every run
+
+## Next steps
+
+- **[Dataset Deduplication](./deduplication)** -- Full pipeline walkthrough with blocking
+- **[Custom Plugins](./custom-plugins)** -- Understanding the GIL cost
+- **[Batch Operations API](/docs/api/batch-operations)** -- `cdist`, `match_best`, `match_batch` reference
+- **[Index API](/docs/api/indexes)** -- BkTree, VpTree, NgramIndex, MmapNgramIndex, MinHashIndex
+- **[Pipeline API](/docs/api/pipeline)** -- All blocking strategies and builder methods
+- **[Scoring API](/docs/api/scoring)** -- CompositeScorer and presets

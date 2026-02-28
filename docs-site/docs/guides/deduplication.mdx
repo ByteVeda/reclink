@@ -1,0 +1,396 @@
+---
+sidebar_position: 2
+title: Dataset Deduplication
+description: End-to-end tutorial for deduplicating a dataset using reclink's record linkage pipeline, from data loading through evaluation and export.
+---
+
+# Dataset Deduplication
+
+This guide walks through deduplicating a customer database end to end: loading data, configuring a pipeline, running dedup, evaluating quality, and exporting results.
+
+## The problem
+
+Duplicate records creep into databases through manual entry, system migrations, and data merges. A customer might appear as:
+
+<Table
+  columns={["id", "first_name", "last_name", "email", "city"]}
+  rows={[
+    ["1", "John", "Smith", "john.smith@email.com", "New York"],
+    ["2", "Jon", "Smyth", "j.smith@email.com", "New York"],
+    ["3", "Jane", "Doe", "jane.doe@email.com", "Boston"],
+    ["4", "J.", "Smith", "johnsmith@email.com", "New York"],
+    ["5", "Jane", "Doe", "janedoe@gmail.com", "Boston"],
+  ]}
+/>
+
+Records 1, 2, and 4 are the same person. Records 3 and 5 are the same person. A deduplication pipeline needs to find these matches without comparing every pair -- because at scale, brute-force comparison is prohibitively expensive.
+
+## Step 1: Load data
+
+reclink works with pandas DataFrames, polars DataFrames, or plain lists of dicts.
+
+```python
+import pandas as pd
+
+df = pd.DataFrame({
+    "id":         ["1",     "2",     "3",     "4",       "5"],
+    "first_name": ["John",  "Jon",   "Jane",  "J.",      "Jane"],
+    "last_name":  ["Smith", "Smyth", "Doe",   "Smith",   "Doe"],
+    "email":      [
+        "john.smith@email.com",
+        "j.smith@email.com",
+        "jane.doe@email.com",
+        "johnsmith@email.com",
+        "janedoe@gmail.com",
+    ],
+    "city":       ["New York", "New York", "Boston", "New York", "Boston"],
+})
+```
+
+Or with polars:
+
+```python
+import polars as pl
+
+df = pl.DataFrame({
+    "id":         ["1",     "2",     "3",     "4",       "5"],
+    "first_name": ["John",  "Jon",   "Jane",  "J.",      "Jane"],
+    "last_name":  ["Smith", "Smyth", "Doe",   "Smith",   "Doe"],
+    "email":      [
+        "john.smith@email.com",
+        "j.smith@email.com",
+        "jane.doe@email.com",
+        "johnsmith@email.com",
+        "janedoe@gmail.com",
+    ],
+    "city":       ["New York", "New York", "Boston", "New York", "Boston"],
+})
+```
+
+## Step 2: Choose fields to compare
+
+Not every column is useful for matching. Pick fields that carry identity signal:
+
+- **first_name** and **last_name** -- high signal, but noisy (typos, nicknames)
+- **email** -- high signal when present, but people change emails
+- **city** -- low signal on its own, but useful as a blocking key
+
+Avoid using auto-increment IDs or timestamps as comparison fields -- they are unique by design.
+
+## Step 3: Set up preprocessing
+
+Preprocessing normalises field values so that superficial differences (casing, punctuation, whitespace) do not penalise the comparison step.
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+builder = (
+    ReclinkPipeline.builder()
+    .preprocess("first_name", ["fold_case", "strip_punctuation", "normalize_whitespace"])
+    .preprocess("last_name", ["fold_case", "strip_diacritics"])
+    .preprocess("email", ["fold_case", "normalize_whitespace"])
+    .preprocess("city", ["fold_case", "normalize_whitespace"])
+)
+```
+
+Available preprocessing operations include `fold_case`, `strip_punctuation`, `strip_diacritics`, `normalize_whitespace`, `normalize_unicode_nfkc`, `standardize_name`, and `remove_stop_words`. See the [Preprocessing API](/docs/api/preprocessing) for the full list.
+
+## Step 4: Choose a blocking strategy
+
+:::warning Why blocking matters
+Without blocking, deduplicating 100,000 records requires comparing every pair: 100,000 x 99,999 / 2 = roughly **5 billion** comparisons. With phonetic blocking on last name, you might reduce this to **5 million** -- a 1,000x speedup.
+:::
+
+Blocking groups records into buckets (or "blocks") and only compares records within the same block. Records that could never match are never compared.
+
+<Table
+  columns={["Strategy", "How it works", "Best for"]}
+  rows={[
+    ["`block_exact(field)`", "Exact field value match", "Clean categorical fields (city, state)"],
+    ["`block_phonetic(field)`", "Same phonetic code (Soundex, Metaphone, etc.)", "Names with spelling variants"],
+    ["`block_sorted_neighborhood(field, window)`", "Sliding window over sorted values", "Partially ordered fields"],
+    ["`block_qgram(field, q, threshold)`", "Shared character n-grams", "Fields with typos"],
+    ["`block_lsh(field)`", "MinHash + banding for approximate similarity", "Large text fields"],
+    ["`block_canopy(field)`", "Two-threshold canopy clustering", "Any similarity metric"],
+  ]}
+/>
+
+For our customer database, phonetic blocking on last name works well:
+
+```python
+builder = builder.block_phonetic("last_name", algorithm="soundex")
+```
+
+"Smith" and "Smyth" both map to Soundex code "S530", so records 1, 2, and 4 end up in the same block. "Doe" maps to "D000", putting records 3 and 5 together.
+
+:::tip Multiple blocking passes
+You can add multiple blocking strategies. The pipeline takes the **union** of all candidate pairs across all blocking steps, so adding a second blocker increases recall without hurting precision.
+
+```python
+builder = (
+    builder
+    .block_phonetic("last_name", algorithm="soundex")
+    .block_exact("city")
+)
+```
+:::
+
+## Step 5: Configure comparators
+
+Comparators score each field independently, producing a score vector per candidate pair.
+
+```python
+builder = (
+    builder
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .compare_string("email", metric="token_sort")
+    .compare_exact("city")
+)
+```
+
+Each comparator produces a `float` in `[0, 1]`. The score vector for a pair might look like `[0.83, 0.78, 0.45, 1.0]` (first_name, last_name, email, city).
+
+Available comparator types:
+
+- `compare_string(field, metric)` -- any string similarity metric
+- `compare_exact(field)` -- binary: 1.0 if equal, 0.0 otherwise
+- `compare_numeric(field, max_diff)` -- numeric proximity
+- `compare_date(field)` -- date proximity
+- `compare_phonetic(field, algorithm)` -- binary: 1.0 if same phonetic code
+
+## Step 6: Choose a classifier
+
+The classifier takes the score vector and produces a final match/non-match decision.
+
+### Simple threshold
+
+Averages all field scores and classifies as "match" if above the threshold:
+
+```python
+builder = builder.classify_threshold(0.85)
+```
+
+### Weighted threshold
+
+Gives different importance to each field:
+
+```python
+builder = builder.classify_weighted(
+    weights=[0.35, 0.35, 0.20, 0.10],  # first, last, email, city
+    threshold=0.80,
+)
+```
+
+### Three-band classification
+
+Classifies into "match", "possible", and "non_match":
+
+```python
+builder = builder.classify_threshold_bands(upper=0.90, lower=0.70)
+```
+
+Records scoring above 0.90 are definite matches. Between 0.70 and 0.90 need manual review. Below 0.70 are non-matches.
+
+### Fellegi-Sunter (probabilistic)
+
+Uses an unsupervised EM algorithm to estimate match probabilities automatically:
+
+```python
+builder = builder.classify_fellegi_sunter_auto()
+```
+
+This is the gold standard for record linkage when you do not have labeled training data. It estimates the probability that each field agrees given a true match vs. a true non-match, then combines these into a log-likelihood ratio.
+
+## Step 7: Build and run
+
+```python
+pipeline = builder.build()
+
+# Find all matching pairs
+matches = pipeline.dedup(df)
+print(matches)
+#    left_id right_id     score match_class                 scores
+# 0        1        2  0.891..       match  [0.83, 0.78, 0.45, 1.0]
+# 1        1        4  0.872..       match  [0.68, 1.0, 0.62, 1.0]
+# 2        3        5  0.935..       match  [1.0, 1.0, 0.74, 1.0]
+```
+
+### Cluster duplicates together
+
+`dedup` returns pairwise matches. To group records into clusters (so records 1, 2, and 4 all end up in the same group), use `dedup_cluster`:
+
+```python
+clusters = pipeline.dedup_cluster(df)
+print(clusters)
+#    cluster_id record_id
+# 0           0         1
+# 1           0         2
+# 2           0         4
+# 3           1         3
+# 4           1         5
+```
+
+You can control the clustering algorithm:
+
+```python
+pipeline = (
+    ReclinkPipeline.builder()
+    # ... preprocessing, blocking, comparison, classification ...
+    .cluster_connected_components()   # default: connected components
+    # or
+    .cluster_hierarchical(linkage="average", threshold=0.5)
+    .build()
+)
+```
+
+## Step 8: Evaluate results
+
+If you have ground-truth labels, measure precision and recall:
+
+```python
+from reclink.evaluation import (
+    precision,
+    recall,
+    f1_score,
+    confusion_matrix,
+    pairs_from_results,
+    scored_pairs_from_results,
+    optimal_threshold,
+)
+
+# Ground truth: these pairs are known duplicates
+true_matches = {("1", "2"), ("1", "4"), ("3", "5")}
+
+# Extract predicted pairs from pipeline output
+predicted = pairs_from_results(matches)
+
+print(f"Precision: {precision(predicted, true_matches):.3f}")
+print(f"Recall:    {recall(predicted, true_matches):.3f}")
+print(f"F1:        {f1_score(predicted, true_matches):.3f}")
+
+cm = confusion_matrix(predicted, true_matches)
+print(f"TP={cm['tp']}, FP={cm['fp']}, FN={cm['fn']}")
+```
+
+### Find the optimal threshold
+
+If you used a scored classifier, you can search for the threshold that maximises F1:
+
+```python
+scored = scored_pairs_from_results(matches)
+best = optimal_threshold(scored, true_matches, criterion="f1")
+print(f"Best threshold: {best['threshold']:.3f}")
+print(f"  Precision: {best['precision']:.3f}")
+print(f"  Recall:    {best['recall']:.3f}")
+print(f"  F1:        {best['f1']:.3f}")
+```
+
+## Step 9: Export results
+
+Write results to CSV or JSON for downstream consumption:
+
+```python
+from reclink.export import (
+    export_matches_csv,
+    export_matches_json,
+    export_clusters_csv,
+    export_clusters_json,
+)
+
+# Pairwise matches
+export_matches_csv(matches, "matches.csv")
+export_matches_json(matches, "matches.json")
+
+# Clustered duplicates
+export_clusters_csv(clusters, "clusters.csv")
+export_clusters_json(clusters, "clusters.json")
+```
+
+The CSV format is simple and widely supported:
+
+```
+left_id,right_id,score,scores
+1,2,0.891,0.83;0.78;0.45;1.0
+1,4,0.872,0.68;1.0;0.62;1.0
+3,5,0.935,1.0;1.0;0.74;1.0
+```
+
+## Complete example
+
+Here is the full pipeline in one block:
+
+```python
+import pandas as pd
+from reclink.pipeline import ReclinkPipeline
+from reclink.evaluation import precision, recall, f1_score, pairs_from_results
+from reclink.export import export_matches_csv, export_clusters_csv
+
+# 1. Load data
+df = pd.DataFrame({
+    "id":         ["1",     "2",     "3",     "4",       "5"],
+    "first_name": ["John",  "Jon",   "Jane",  "J.",      "Jane"],
+    "last_name":  ["Smith", "Smyth", "Doe",   "Smith",   "Doe"],
+    "email":      [
+        "john.smith@email.com", "j.smith@email.com",
+        "jane.doe@email.com", "johnsmith@email.com", "janedoe@gmail.com",
+    ],
+    "city":       ["New York", "New York", "Boston", "New York", "Boston"],
+})
+
+# 2. Build pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("first_name", ["fold_case", "strip_punctuation", "normalize_whitespace"])
+    .preprocess("last_name", ["fold_case", "strip_diacritics"])
+    .preprocess("email", ["fold_case"])
+    .preprocess("city", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .compare_string("email", metric="token_sort")
+    .compare_exact("city")
+    .classify_weighted([0.35, 0.35, 0.20, 0.10], threshold=0.80)
+    .cluster_connected_components()
+    .build()
+)
+
+# 3. Run dedup
+matches = pipeline.dedup(df)
+clusters = pipeline.dedup_cluster(df)
+
+# 4. Evaluate (if ground truth available)
+true_matches = {("1", "2"), ("1", "4"), ("3", "5")}
+predicted = pairs_from_results(matches)
+print(f"Precision: {precision(predicted, true_matches):.3f}")
+print(f"Recall:    {recall(predicted, true_matches):.3f}")
+print(f"F1:        {f1_score(predicted, true_matches):.3f}")
+
+# 5. Export
+export_matches_csv(matches, "matches.csv")
+export_clusters_csv(clusters, "clusters.csv")
+```
+
+## Tips and best practices
+
+- **Always block.** Even a simple `block_exact("city")` can reduce runtime by orders of magnitude.
+- **Start with a high threshold, then lower it.** Begin at 0.90 for high precision, then reduce toward 0.80 to capture more matches. Use the evaluation API to guide your threshold choice.
+- **Use Fellegi-Sunter for unlabeled data.** When you don't have ground truth, `classify_fellegi_sunter_auto()` provides a principled probabilistic classification without manual threshold tuning.
+- **Cluster after matching.** Pairwise matches can be transitive (A=B, B=C implies A=C). `dedup_cluster` with `cluster_connected_components` handles this automatically.
+- **Profile your pipeline.** Enable profiling to find bottlenecks:
+
+```python
+pipeline = pipeline.with_profiling()
+matches = pipeline.dedup(df)
+stats = pipeline.profiling_stats
+print(stats)  # {"blocking": 1200000, "comparison": 8500000, ...} (nanoseconds)
+```
+
+## Next steps
+
+- **[Name Matching](./name-matching)** -- Deep dive into person-name matching strategies
+- **[Custom Plugins](./custom-plugins)** -- Write your own comparators, blockers, and classifiers
+- **[Performance Optimization](./performance)** -- Scale to millions of records
+- **[Pipeline API](/docs/api/pipeline)** -- Complete pipeline builder reference
+- **[Evaluation API](/docs/api/evaluation)** -- Precision, recall, F1, ROC curves
+- **[Export API](/docs/api/export)** -- CSV and JSON export functions

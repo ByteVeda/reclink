@@ -1,0 +1,552 @@
+---
+sidebar_position: 1
+title: String Metrics
+description: Complete reference for all string distance and similarity metrics in reclink.
+---
+
+# String Metrics
+
+reclink ships over 25 string comparison functions spanning six categories. Every function is implemented in Rust and exposed to Python with zero-copy overhead via PyO3. All functions listed on this page are imported directly from `reclink`.
+
+```python
+from reclink import levenshtein, jaro_winkler, cosine
+```
+
+:::tip Distance vs. Similarity
+**Distance** functions return an integer (lower = more similar). **Similarity** functions return a float in `[0, 1]` (higher = more similar). Most metrics provide both variants.
+:::
+
+---
+
+## Edit Distance
+
+Edit distance metrics count the minimum number of operations required to transform one string into another.
+
+### `levenshtein(a, b)`
+
+Classic Levenshtein distance -- the minimum number of single-character insertions, deletions, or substitutions.
+
+```python
+from reclink import levenshtein, levenshtein_similarity
+
+levenshtein("kitten", "sitting")            # 3
+levenshtein_similarity("kitten", "sitting")  # 0.5714285714285714
+```
+
+### `damerau_levenshtein(a, b)`
+
+Extends Levenshtein distance with transpositions of two adjacent characters as a fourth operation.
+
+```python
+from reclink import damerau_levenshtein, damerau_levenshtein_similarity
+
+damerau_levenshtein("abc", "acb")            # 1 (one transposition)
+levenshtein("abc", "acb")                    # 2 (delete + insert)
+
+damerau_levenshtein_similarity("abc", "acb")  # 0.6666666666666666
+```
+
+### `hamming(a, b)`
+
+Number of positions where corresponding characters differ. Both strings **must be the same length**; a `ValueError` is raised otherwise.
+
+```python
+from reclink import hamming, hamming_similarity
+
+hamming("karolin", "kathrin")            # 3
+hamming_similarity("karolin", "kathrin")  # 0.5714285714285714
+```
+
+### `weighted_levenshtein(a, b, ...)`
+
+Levenshtein variant with configurable per-operation costs.
+
+```python
+from reclink import weighted_levenshtein, weighted_levenshtein_similarity
+
+# Penalise substitutions more heavily than insertions/deletions
+weighted_levenshtein(
+    "abc", "axc",
+    insert_cost=1.0,
+    delete_cost=1.0,
+    substitute_cost=2.0,
+    transpose_cost=1.0,
+)  # 2.0
+
+weighted_levenshtein_similarity(
+    "abc", "axc",
+    insert_cost=1.0,
+    delete_cost=1.0,
+    substitute_cost=2.0,
+    transpose_cost=1.0,
+)  # 0.6666666666666666
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ["`insert_cost`", "`float`", "`1.0`", "Cost of inserting a character (weighted variants only)"],
+    ["`delete_cost`", "`float`", "`1.0`", "Cost of deleting a character (weighted variants only)"],
+    ["`substitute_cost`", "`float`", "`1.0`", "Cost of substituting a character (weighted variants only)"],
+    ["`transpose_cost`", "`float`", "`1.0`", "Cost of transposing adjacent characters (weighted variants only)"],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`levenshtein`", "`int` -- edit distance"],
+    ["`levenshtein_similarity`", "`float` in `[0, 1]`"],
+    ["`damerau_levenshtein`", "`int` -- edit distance with transpositions"],
+    ["`damerau_levenshtein_similarity`", "`float` in `[0, 1]`"],
+    ["`hamming`", "`int` -- positional mismatches"],
+    ["`hamming_similarity`", "`float` in `[0, 1]`"],
+    ["`weighted_levenshtein`", "`float` -- weighted edit distance"],
+    ["`weighted_levenshtein_similarity`", "`float` in `[0, 1]`"],
+  ]}
+/>
+
+---
+
+## Similarity
+
+Character-level similarity metrics that do not count discrete operations. Particularly well-suited for comparing names and short strings.
+
+### `jaro(a, b)`
+
+Jaro similarity considers the number and order of common characters between two strings.
+
+```python
+from reclink import jaro
+
+jaro("martha", "marhta")  # 0.9444444444444444
+```
+
+### `jaro_winkler(a, b, prefix_weight=0.1)`
+
+Boosts the Jaro score for strings that share a common prefix (up to 4 characters). The `prefix_weight` controls how much the prefix match contributes.
+
+```python
+from reclink import jaro_winkler
+
+jaro_winkler("martha", "marhta")                   # 0.9611111111111111
+jaro_winkler("martha", "marhta", prefix_weight=0.2) # 0.9777777777777777
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ["`prefix_weight`", "`float`", "`0.1`", "Weight for the common-prefix bonus (`jaro_winkler` only). Must be in `[0, 0.25]`."],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`jaro`", "`float` in `[0, 1]`"],
+    ["`jaro_winkler`", "`float` in `[0, 1]`"],
+  ]}
+/>
+
+---
+
+## Token-Based
+
+Token-based metrics split strings into tokens (words or n-grams) and compare the resulting sets or multisets. They handle word-order differences and extra tokens gracefully.
+
+### `cosine(a, b, n=2)`
+
+Cosine similarity over character n-gram frequency vectors. The `n` parameter controls the n-gram size.
+
+```python
+from reclink import cosine
+
+cosine("night", "nacht")       # 0.4
+cosine("night", "nacht", n=3)  # 0.0
+```
+
+### `jaccard(a, b)`
+
+Jaccard index over whitespace-delimited tokens: `|A & B| / |A | B|`.
+
+```python
+from reclink import jaccard
+
+jaccard("new york city", "new york")  # 0.6666666666666666
+```
+
+### `sorensen_dice(a, b)`
+
+Dice coefficient over character bigrams: `2 * |A & B| / (|A| + |B|)`.
+
+```python
+from reclink import sorensen_dice
+
+sorensen_dice("night", "nacht")  # 0.4
+```
+
+### `token_sort_ratio(a, b)`
+
+Sorts tokens alphabetically before comparing, so word order does not affect the score.
+
+```python
+from reclink import token_sort_ratio
+
+token_sort_ratio("John Smith", "Smith John")  # 1.0
+```
+
+### `token_set_ratio(a, b)`
+
+Compares the intersection and difference of token sets. Handles extra and missing tokens better than `token_sort_ratio`.
+
+```python
+from reclink import token_set_ratio
+
+token_set_ratio("John Smith Jr", "John Smith")  # high score
+```
+
+### `partial_ratio(a, b)`
+
+Finds the best matching substring of the longer string that matches the shorter string. Useful when one string is a substring or abbreviation of the other.
+
+```python
+from reclink import partial_ratio
+
+partial_ratio("John", "John Smith")  # 1.0
+```
+
+### `ngram_similarity(a, b, n=2)`
+
+Similarity based on shared character n-grams normalized by total n-grams.
+
+```python
+from reclink import ngram_similarity
+
+ngram_similarity("night", "nacht")       # 0.25
+ngram_similarity("night", "nacht", n=3)  # 0.0
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ["`n`", "`int`", "`2`", "N-gram size (`cosine` and `ngram_similarity` only)"],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`cosine`", "`float` in `[0, 1]`"],
+    ["`jaccard`", "`float` in `[0, 1]`"],
+    ["`sorensen_dice`", "`float` in `[0, 1]`"],
+    ["`token_sort_ratio`", "`float` in `[0, 1]`"],
+    ["`token_set_ratio`", "`float` in `[0, 1]`"],
+    ["`partial_ratio`", "`float` in `[0, 1]`"],
+    ["`ngram_similarity`", "`float` in `[0, 1]`"],
+  ]}
+/>
+
+---
+
+## Subsequence
+
+Subsequence metrics measure the longest shared character sequence (contiguous or non-contiguous) between two strings.
+
+### `lcs_length(a, b)` / `lcs_similarity(a, b)`
+
+Longest Common Subsequence -- characters need not be contiguous.
+
+```python
+from reclink import lcs_length, lcs_similarity
+
+lcs_length("abcde", "ace")       # 3  ("a", "c", "e")
+lcs_similarity("abcde", "ace")   # 0.6
+```
+
+### `longest_common_substring_length(a, b)` / `longest_common_substring_similarity(a, b)`
+
+Longest Common Substring -- characters **must** be contiguous.
+
+```python
+from reclink import longest_common_substring_length, longest_common_substring_similarity
+
+longest_common_substring_length("abcxyz", "xyzabc")       # 3  ("abc" or "xyz")
+longest_common_substring_similarity("abcxyz", "xyzabc")   # 0.5
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`lcs_length`", "`int` -- length of the longest common subsequence"],
+    ["`lcs_similarity`", "`float` in `[0, 1]`"],
+    ["`longest_common_substring_length`", "`int` -- length of the longest common contiguous substring"],
+    ["`longest_common_substring_similarity`", "`float` in `[0, 1]`"],
+  ]}
+/>
+
+---
+
+## Alignment
+
+Alignment metrics originate from bioinformatics and support flexible gap penalties, making them effective for strings with inserted or deleted segments.
+
+### `smith_waterman(a, b, match_score, mismatch_penalty, gap_penalty)`
+
+Local sequence alignment score using the Smith-Waterman algorithm. Returns a raw alignment score (not normalized).
+
+```python
+from reclink import smith_waterman
+
+smith_waterman("ACGT", "AGGT", match_score=2.0, mismatch_penalty=-1.0, gap_penalty=-1.0)
+# 5.0
+```
+
+### `smith_waterman_similarity(a, b)`
+
+Normalized Smith-Waterman score mapped to `[0, 1]` with sensible default parameters.
+
+```python
+from reclink import smith_waterman_similarity
+
+smith_waterman_similarity("hello", "hallo")  # 0.8
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ["`match_score`", "`float`", <em>required</em>, "Score awarded for a matching character (`smith_waterman` only)"],
+    ["`mismatch_penalty`", "`float`", <em>required</em>, "Penalty for a mismatched character (`smith_waterman` only)"],
+    ["`gap_penalty`", "`float`", <em>required</em>, "Penalty for a gap/indel (`smith_waterman` only)"],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`smith_waterman`", "`float` -- raw alignment score"],
+    ["`smith_waterman_similarity`", "`float` in `[0, 1]`"],
+  ]}
+/>
+
+---
+
+## Hybrid
+
+Hybrid metrics combine multiple comparison strategies into a single score.
+
+### `phonetic_hybrid(a, b, phonetic="soundex", metric="jaro_winkler", phonetic_weight=0.3)`
+
+Blends a string similarity metric with a phonetic comparison. The final score is:
+
+```
+score = (1 - phonetic_weight) * metric(a, b) + phonetic_weight * metric(phonetic(a), phonetic(b))
+```
+
+```python
+from reclink import phonetic_hybrid
+
+# Default: 70% Jaro-Winkler on raw strings + 30% Jaro-Winkler on Soundex codes
+phonetic_hybrid("Smith", "Smyth")  # high score
+
+# Custom configuration
+phonetic_hybrid(
+    "Mueller", "Muller",
+    phonetic="double_metaphone",
+    metric="levenshtein_similarity",
+    phonetic_weight=0.5,
+)
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ['`phonetic`', '`str`', '`"soundex"`', 'Phonetic algorithm: `"soundex"`, `"metaphone"`, `"double_metaphone"`, `"nysiis"`, `"caverphone"`, `"cologne_phonetic"`, `"beider_morse"`'],
+    ['`metric`', '`str`', '`"jaro_winkler"`', "Similarity metric to apply to both raw and phonetic strings"],
+    ["`phonetic_weight`", "`float`", "`0.3`", "Weight given to the phonetic component. Must be in `[0, 1]`."],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`phonetic_hybrid`", "`float` in `[0, 1]`"],
+  ]}
+/>
+
+---
+
+## Early Termination
+
+Threshold variants short-circuit and return `None` once it is mathematically impossible for the distance to be within the given threshold. This can be significantly faster when filtering large candidate lists.
+
+### `levenshtein_threshold(a, b, max_distance)`
+
+```python
+from reclink import levenshtein_threshold
+
+levenshtein_threshold("kitten", "sitting", max_distance=2)  # None (distance is 3)
+levenshtein_threshold("kitten", "sitten", max_distance=2)   # 1
+```
+
+### `damerau_levenshtein_threshold(a, b, max_distance)`
+
+```python
+from reclink import damerau_levenshtein_threshold
+
+damerau_levenshtein_threshold("abc", "acb", max_distance=1)  # 1
+damerau_levenshtein_threshold("abc", "xyz", max_distance=1)  # None
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ["`max_distance`", "`int`", <em>required</em>, "Maximum allowable distance. If the true distance exceeds this, `None` is returned."],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`levenshtein_threshold`", "`int` if distance <= `max_distance`, otherwise `None`"],
+    ["`damerau_levenshtein_threshold`", "`int` if distance <= `max_distance`, otherwise `None`"],
+  ]}
+/>
+
+---
+
+## Utilities
+
+Diagnostic and visualization helpers.
+
+### `explain(a, b, algorithms=None)`
+
+Returns a dictionary with scores from multiple algorithms at once. Useful for exploring which metric best fits your data.
+
+```python
+from reclink import explain
+
+result = explain("Jon Smith", "John Smyth")
+# {
+#     "levenshtein": 3,
+#     "levenshtein_similarity": 0.7,
+#     "jaro_winkler": 0.832...,
+#     "cosine": 0.5,
+#     "soundex_match": True,
+#     ...
+# }
+
+# Only specific algorithms
+result = explain("Jon Smith", "John Smyth", algorithms=["jaro_winkler", "cosine"])
+```
+
+### `levenshtein_align(a, b)`
+
+Returns a visual alignment showing the edit operations between two strings.
+
+```python
+from reclink import levenshtein_align
+
+alignment = levenshtein_align("kitten", "sitting")
+# {
+#     "visual": "kitten-\nsitting",
+#     "distance": 3,
+#     "ops": [
+#         {"op": "substitute", "from": "k", "to": "s", "pos": 0},
+#         {"op": "substitute", "from": "e", "to": "i", "pos": 4},
+#         {"op": "insert", "char": "g", "pos": 6},
+#     ]
+# }
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ["`algorithms`", "`list[str]` or `None`", "`None`", "Subset of algorithms to include (`explain` only). Pass `None` for all."],
+  ]}
+/>
+
+### Return values
+
+<Table
+  columns={["Function", "Returns"]}
+  rows={[
+    ["`explain`", "`dict` mapping algorithm names to their scores"],
+    ['`levenshtein_align`', '`dict` with keys `"visual"`, `"distance"`, and `"ops"`'],
+  ]}
+/>
+
+---
+
+## Edge Cases
+
+All metrics handle edge cases consistently:
+
+<Table
+  columns={["Scenario", "Distance metrics", "Similarity metrics"]}
+  rows={[
+    ["Both strings empty", "`0`", "`1.0`"],
+    ["One string empty", "Length of the non-empty string", "`0.0`"],
+    ["Identical strings", "`0`", "`1.0`"],
+  ]}
+/>
+
+---
+
+## See Also
+
+- **[Phonetic Algorithms](./phonetic)** -- encode strings by pronunciation
+- **[Batch Operations](./batch-operations)** -- `cdist`, `match_best`, and other vectorized functions
+- **[Preprocessing](./preprocessing)** -- clean and normalize strings before comparison
+- **[Concepts](/docs/getting-started/concepts)** -- understand when to use each metric category

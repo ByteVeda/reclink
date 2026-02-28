@@ -1,0 +1,309 @@
+---
+sidebar_position: 8
+title: Evaluation
+description: Measure record linkage quality with precision, recall, F1, confusion matrices, ROC curves, and automatic threshold tuning.
+---
+
+# Evaluation
+
+The `reclink.evaluation` module provides standard information-retrieval metrics for measuring record linkage quality against ground truth. All functions accept both raw pair sets and pipeline output directly.
+
+```python
+from reclink.evaluation import (
+    precision,
+    recall,
+    f1_score,
+    confusion_matrix,
+    pairs_from_results,
+    scored_pairs_from_results,
+    roc_curve,
+    auc,
+    optimal_threshold,
+)
+```
+
+---
+
+## Converting pipeline output
+
+Before computing metrics, convert pipeline results into the pair format expected by the evaluation functions.
+
+### pairs_from_results(results)
+
+Extract unscored pairs from pipeline output.
+
+```python
+from reclink.evaluation import pairs_from_results
+
+predicted = pairs_from_results(matches)
+# {("1", "2"), ("3", "4"), ...}
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`results`", "`list[dict]`, pandas DataFrame, or polars DataFrame", "Pipeline output with `left_id` and `right_id` columns/keys."],
+  ]}
+/>
+
+**Returns:** `set[tuple[str, str]]` -- normalized pairs where `(a, b)` and `(b, a)` are treated as equivalent.
+
+### scored_pairs_from_results(results)
+
+Extract scored pairs from pipeline output, preserving the match score.
+
+```python
+from reclink.evaluation import scored_pairs_from_results
+
+scored = scored_pairs_from_results(matches)
+# [("1", "2", 0.95), ("3", "4", 0.78), ...]
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`results`", "`list[dict]`, pandas DataFrame, or polars DataFrame", "Pipeline output with `left_id`, `right_id`, and `score` columns/keys."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, str, float]]` -- normalized `(left_id, right_id, score)` triples.
+
+---
+
+## Classification metrics
+
+### precision(predicted, true_matches)
+
+Fraction of predicted matches that are correct (positive predictive value).
+
+```python
+from reclink.evaluation import precision
+
+p = precision(predicted, true_matches)
+# 0.85
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`predicted`", "`set[tuple[str, str]]`", "Predicted match pairs."],
+    ["`true_matches`", "`set[tuple[str, str]]`", "Ground truth match pairs."],
+  ]}
+/>
+
+**Returns:** `float` in `[0, 1]`. Returns `0.0` when `predicted` is empty.
+
+### recall(predicted, true_matches)
+
+Fraction of true matches that were found (sensitivity).
+
+```python
+from reclink.evaluation import recall
+
+r = recall(predicted, true_matches)
+# 0.92
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`predicted`", "`set[tuple[str, str]]`", "Predicted match pairs."],
+    ["`true_matches`", "`set[tuple[str, str]]`", "Ground truth match pairs."],
+  ]}
+/>
+
+**Returns:** `float` in `[0, 1]`. Returns `0.0` when `true_matches` is empty.
+
+### f1_score(predicted, true_matches)
+
+Harmonic mean of precision and recall.
+
+```python
+from reclink.evaluation import f1_score
+
+f1 = f1_score(predicted, true_matches)
+# 0.88
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`predicted`", "`set[tuple[str, str]]`", "Predicted match pairs."],
+    ["`true_matches`", "`set[tuple[str, str]]`", "Ground truth match pairs."],
+  ]}
+/>
+
+**Returns:** `float` in `[0, 1]`. Returns `0.0` when both precision and recall are zero.
+
+### confusion_matrix(predicted, true_matches, all_pairs)
+
+Compute confusion matrix counts.
+
+```python
+from reclink.evaluation import confusion_matrix
+
+cm = confusion_matrix(predicted, true_matches)
+# {"tp": 42, "fp": 8, "fn": 5}
+
+# Include true negatives by passing all possible pairs
+cm = confusion_matrix(predicted, true_matches, all_pairs=all_possible)
+# {"tp": 42, "fp": 8, "fn": 5, "tn": 9945}
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`predicted`", "`set[tuple[str, str]]`", "--", "Predicted match pairs."],
+    ["`true_matches`", "`set[tuple[str, str]]`", "--", "Ground truth match pairs."],
+    ["`all_pairs`", "`set[tuple[str, str]] | None`", "`None`", "Universe of all possible pairs. Required for `tn` computation. If `None`, `tn` is omitted."],
+  ]}
+/>
+
+**Returns:** `dict[str, int]` with keys `"tp"`, `"fp"`, `"fn"`, and optionally `"tn"`.
+
+---
+
+## ROC analysis
+
+### roc_curve(scored_pairs, true_matches, all_pairs_count, thresholds)
+
+Compute ROC curve points from scored pairs at varying thresholds.
+
+```python
+from reclink.evaluation import scored_pairs_from_results, roc_curve
+
+scored = scored_pairs_from_results(matches)
+curve = roc_curve(scored, true_matches, all_pairs_count=10000)
+# {"fpr": [0.0, 0.001, ...], "tpr": [0.0, 0.42, ...], "thresholds": [0.99, 0.95, ...]}
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`scored_pairs`", "`list[tuple[str, str, float]]`", "--", "Scored pair triples from `scored_pairs_from_results`."],
+    ["`true_matches`", "`set[tuple[str, str]]`", "--", "Ground truth match pairs."],
+    ["`all_pairs_count`", "`int | None`", "`None`", "Total number of possible pairs (used as the FPR denominator). If `None`, FPR is `0.0` at every threshold."],
+    ["`thresholds`", "`list[float] | None`", "`None`", "Thresholds to evaluate. If `None`, uses unique scores sorted descending plus a value below the minimum."],
+  ]}
+/>
+
+**Returns:** `dict` with keys `"fpr"` (`list[float]`), `"tpr"` (`list[float]`), and `"thresholds"` (`list[float]`).
+
+### auc(fpr, tpr)
+
+Compute the area under the ROC curve using the trapezoidal rule.
+
+```python
+from reclink.evaluation import auc
+
+area = auc(curve["fpr"], curve["tpr"])
+# 0.94
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`fpr`", "`list[float]`", "False positive rates from `roc_curve`."],
+    ["`tpr`", "`list[float]`", "True positive rates from `roc_curve`."],
+  ]}
+/>
+
+**Returns:** `float` in `[0, 1]`.
+
+---
+
+## Threshold tuning
+
+### optimal_threshold(scored_pairs, true_matches, criterion)
+
+Find the score threshold that maximizes a given criterion.
+
+```python
+from reclink.evaluation import optimal_threshold
+
+result = optimal_threshold(scored, true_matches, criterion="f1")
+# {"threshold": 0.82, "f1": 0.91, "precision": 0.89, "recall": 0.93}
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`scored_pairs`", "`list[tuple[str, str, float]]`", "--", "Scored pair triples."],
+    ["`true_matches`", "`set[tuple[str, str]]`", "--", "Ground truth match pairs."],
+    ["`criterion`", "`str`", '`"f1"`', 'Criterion to maximize: `"f1"`, `"precision"`, or `"recall"`.'],
+  ]}
+/>
+
+**Returns:** `dict[str, float]` with keys `"threshold"`, `"f1"`, `"precision"`, `"recall"`.
+
+---
+
+## Complete example
+
+End-to-end evaluation of a record linkage pipeline.
+
+```python
+import pandas as pd
+from reclink.pipeline import ReclinkPipeline
+from reclink.evaluation import (
+    pairs_from_results,
+    scored_pairs_from_results,
+    precision,
+    recall,
+    f1_score,
+    confusion_matrix,
+    roc_curve,
+    auc,
+    optimal_threshold,
+)
+
+# Build and run pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("name", ["fold_case"])
+    .block_phonetic("name", algorithm="soundex")
+    .compare_string("name", metric="jaro_winkler")
+    .classify_threshold(0.80)
+    .build()
+)
+
+df = pd.DataFrame({
+    "id": ["1", "2", "3", "4"],
+    "name": ["Jon Smith", "John Smyth", "Jane Doe", "Janet Doe"],
+})
+
+matches = pipeline.dedup(df, id_column="id")
+
+# Define ground truth
+true_matches = {("1", "2"), ("3", "4")}
+
+# Classification metrics
+predicted = pairs_from_results(matches)
+print(f"Precision: {precision(predicted, true_matches):.3f}")
+print(f"Recall:    {recall(predicted, true_matches):.3f}")
+print(f"F1:        {f1_score(predicted, true_matches):.3f}")
+
+cm = confusion_matrix(predicted, true_matches)
+print(f"TP={cm['tp']}, FP={cm['fp']}, FN={cm['fn']}")
+
+# ROC analysis
+scored = scored_pairs_from_results(matches)
+n_records = len(df)
+all_pairs_count = n_records * (n_records - 1) // 2  # Total possible pairs
+
+curve = roc_curve(scored, true_matches, all_pairs_count=all_pairs_count)
+area = auc(curve["fpr"], curve["tpr"])
+print(f"AUC: {area:.3f}")
+
+# Find the best threshold
+best = optimal_threshold(scored, true_matches, criterion="f1")
+print(f"Best threshold: {best['threshold']:.3f} (F1={best['f1']:.3f})")
+```
+
+---
+
+## Related
+
+- [Pipeline](/docs/api/pipeline) -- build record linkage pipelines that produce the results evaluated here
+- [Scoring & Presets](/docs/api/scoring) -- composite scorers for standalone matching
+- [Concepts](/docs/getting-started/concepts) -- background on the record linkage pipeline stages

@@ -1,0 +1,446 @@
+---
+sidebar_position: 5
+title: Index Structures
+description: Sub-linear nearest-neighbor search with BK-trees, VP-trees, n-gram indexes, memory-mapped indexes, and MinHash LSH.
+---
+
+# Index Structures
+
+For large datasets, linear scanning is too slow. reclink provides five specialized index structures that enable sub-linear nearest-neighbor search, each optimized for different use cases and metric families.
+
+All index types support persistence via `save`/`load` (or `build_and_save`/`open` for memory-mapped variants), and most support incremental updates through `insert` and `remove`.
+
+## BkTree
+
+A [BK-tree](https://en.wikipedia.org/wiki/BK-tree) partitions strings by their pairwise edit distance, enabling exact threshold search in sub-linear time. Best suited for integer-valued distance metrics like Levenshtein and Damerau-Levenshtein.
+
+### Construction
+
+```python
+from reclink import BkTree
+
+tree = BkTree.build(
+    ["smith", "smyth", "john", "jane", "jonathan"],
+    metric="levenshtein",
+)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`strings`", "`list[str]`", "Strings to index."],
+    ["`metric`", "`str`", "Distance metric name. Must be an integer-valued metric: `\"levenshtein\"`, `\"damerau_levenshtein\"`, `\"hamming\"`, etc."],
+  ]}
+/>
+
+### Range search
+
+Find all strings within a maximum edit distance of the query.
+
+```python
+results = tree.find_within("smith", max_distance=1)
+# [("smith", 0, 0), ("smyth", 1, 1)]
+# Each tuple: (string, distance, index)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`max_distance`", "`int`", "Maximum allowable distance (inclusive)."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, int]]` -- each tuple contains `(matched_string, distance, index)`.
+
+### k-Nearest neighbor search
+
+Find the k closest strings to the query.
+
+```python
+results = tree.find_nearest("jon", k=2)
+# [("john", 1, 2), ("jane", 2, 3)]
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`k`", "`int`", "Number of nearest neighbors to return."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, int]]` -- sorted by ascending distance.
+
+### Incremental updates
+
+```python
+new_idx = tree.insert("smoth")       # Returns the new index
+tree.remove(new_idx)                  # Remove by index, returns True/False
+2 in tree                             # Membership check by index
+len(tree)                             # Number of indexed strings
+```
+
+### Persistence
+
+```python
+tree.save("names.bk")
+tree = BkTree.load("names.bk")
+```
+
+### Memory introspection
+
+```python
+tree.memory_usage()        # Bytes as int
+tree.memory_usage_human()  # e.g., "1.2 MB"
+```
+
+---
+
+## VpTree
+
+A [vantage-point tree](https://en.wikipedia.org/wiki/Vantage-point_tree) works with any metric (including float-valued similarity metrics). It supports both k-nearest neighbor and range search.
+
+### Construction
+
+```python
+from reclink import VpTree
+
+tree = VpTree.build(
+    ["smith", "smyth", "john", "jane"],
+    metric="jaro_winkler",
+)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`strings`", "`list[str]`", "Strings to index."],
+    ["`metric`", "`str`", "Any metric name: `\"jaro_winkler\"`, `\"cosine\"`, `\"levenshtein\"`, etc. For similarity metrics, distances are computed as `1 - similarity`."],
+  ]}
+/>
+
+### Range search
+
+```python
+results = tree.find_within("smith", max_distance=0.3)
+# Each tuple: (string, index, distance_as_float)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`max_distance`", "`float`", "Maximum distance (inclusive). For similarity metrics, this is `1 - min_similarity`."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, float]]`
+
+### k-Nearest neighbor search
+
+```python
+results = tree.find_nearest("jon", k=2)
+# [("john", 2, 0.12), ("jane", 3, 0.45)]
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`k`", "`int`", "Number of nearest neighbors to return."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, float]]` -- sorted by ascending distance.
+
+### Incremental updates
+
+```python
+new_idx = tree.insert("smoth")
+tree.remove(new_idx)
+2 in tree
+len(tree)
+```
+
+After many inserts/removes, the tree may become unbalanced. Call `rebuild()` to rebalance:
+
+```python
+tree.rebuild()
+```
+
+### Persistence
+
+```python
+tree.save("names.vp")
+tree = VpTree.load("names.vp")
+```
+
+### Memory introspection
+
+```python
+tree.memory_usage()        # Bytes as int
+tree.memory_usage_human()  # e.g., "512.0 KB"
+```
+
+---
+
+## NgramIndex
+
+An n-gram inverted index enables fast approximate matching by counting shared character n-grams between the query and indexed strings. No distance metric computation is needed -- candidates are ranked by overlap count.
+
+### Construction
+
+```python
+from reclink import NgramIndex
+
+index = NgramIndex.build(
+    ["smith", "smyth", "john", "jane"],
+    n=2,
+)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`strings`", "`list[str]`", "Strings to index."],
+    ["`n`", "`int`", "N-gram size (e.g., `2` for bigrams, `3` for trigrams)."],
+  ]}
+/>
+
+### Threshold search
+
+Find all strings sharing at least `threshold` n-grams with the query.
+
+```python
+results = index.search("smith", threshold=2)
+# Each tuple: (string, overlap_count, index)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`threshold`", "`int`", "Minimum number of shared n-grams."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, int]]`
+
+### Top-k search
+
+```python
+results = index.search_top_k("smith", k=2)
+# [("smith", 4, 0), ("smyth", 2, 1)]
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`k`", "`int`", "Maximum number of results."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, int]]` -- sorted by descending overlap count.
+
+### Incremental updates
+
+```python
+new_idx = index.insert("smoth")
+index.remove(new_idx)
+0 in index
+len(index)
+```
+
+### Persistence
+
+```python
+index.save("names.ngram")
+index = NgramIndex.load("names.ngram")
+```
+
+### Memory introspection
+
+```python
+index.memory_usage()        # Bytes as int
+index.memory_usage_human()  # e.g., "2.4 MB"
+```
+
+---
+
+## MmapNgramIndex
+
+A memory-mapped variant of `NgramIndex` for datasets that exceed available RAM. The index lives on disk and is paged into memory on demand by the operating system. Read-only after construction.
+
+### Build and save
+
+```python
+from reclink import MmapNgramIndex
+
+MmapNgramIndex.build_and_save(
+    ["smith", "smyth", "john", "jane", ...],
+    n=2,
+    path="names.mmap",
+)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`strings`", "`list[str]`", "Strings to index."],
+    ["`n`", "`int`", "N-gram size."],
+    ["`path`", "`str`", "File path to write the memory-mapped index."],
+  ]}
+/>
+
+### Open an existing index
+
+```python
+index = MmapNgramIndex.open("names.mmap")
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`path`", "`str`", "File path of a previously built memory-mapped index."],
+  ]}
+/>
+
+### Threshold search
+
+```python
+results = index.search("smith", threshold=2)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`threshold`", "`int`", "Minimum number of shared n-grams."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, int]]`
+
+### Top-k search
+
+```python
+results = index.search_top_k("smith", k=2)
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`query`", "`str`", "Query string."],
+    ["`k`", "`int`", "Maximum number of results."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, int, int]]` -- sorted by descending overlap count.
+
+### Memory introspection
+
+```python
+len(index)                  # Number of indexed strings
+index.memory_usage()        # Mapped region size in bytes
+index.memory_usage_human()  # e.g., "128.0 MB"
+```
+
+:::note
+`MmapNgramIndex` is read-only. It does not support `insert` or `remove`. To update the index, rebuild it with `build_and_save`.
+:::
+
+---
+
+## MinHashIndex
+
+A [MinHash LSH](https://en.wikipedia.org/wiki/MinHash) index for approximate nearest-neighbor search on large string collections. Strings are shingled into character n-grams, hashed into compact signatures, and grouped into bands for fast candidate retrieval.
+
+### Construction
+
+```python
+from reclink import MinHashIndex
+
+index = MinHashIndex.build(
+    ["Jonathan Smith", "Jon Smyth", "Jane Doe", "John Smith"],
+    num_hashes=100,
+    num_bands=20,
+    shingle_size=3,
+)
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`strings`", "`list[str]`", "--", "Strings to index."],
+    ["`num_hashes`", "`int`", "`100`", "Number of hash functions in the MinHash signature. Higher values increase accuracy but use more memory."],
+    ["`num_bands`", "`int`", "`20`", "Number of bands for the banding technique. Must evenly divide `num_hashes`. More bands lower the similarity threshold for candidate retrieval."],
+    ["`shingle_size`", "`int`", "`3`", "Character n-gram size used for shingling each string."],
+  ]}
+/>
+
+:::tip Tuning bands and hashes
+The approximate similarity threshold for candidate retrieval is `(1/num_bands)^(1/rows_per_band)` where `rows_per_band = num_hashes / num_bands`. With 100 hashes and 20 bands, the threshold is approximately 0.37.
+:::
+
+### Query
+
+```python
+results = index.query("Jonathan Smith", threshold=0.3)
+# [(3, "John Smith", 0.82), (1, "Jon Smyth", 0.45)]
+# Each tuple: (index, string, estimated_similarity)
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "--", "Query string."],
+    ["`threshold`", "`float`", "`0.5`", "Minimum estimated Jaccard similarity for returned results."],
+  ]}
+/>
+
+**Returns:** `list[tuple[int, str, float]]` -- sorted by descending similarity.
+
+### Incremental updates
+
+```python
+new_idx = index.insert("Janet Smith")
+index.remove(new_idx)
+len(index)
+```
+
+### Persistence
+
+```python
+index.save("names.minhash")
+index = MinHashIndex.load("names.minhash")
+```
+
+### Memory introspection
+
+```python
+index.memory_usage()        # Bytes as int
+index.memory_usage_human()  # e.g., "8.5 MB"
+```
+
+---
+
+## Choosing an index
+
+<Table
+  columns={["Index", "Metric requirement", "Exact results?", "Incremental?", "Larger-than-RAM?"]}
+  rows={[
+    [<strong>BkTree</strong>, "Integer distance only", "Yes", "Yes", "No"],
+    [<strong>VpTree</strong>, "Any metric", "Yes", "Yes (+ `rebuild`)", "No"],
+    [<strong>NgramIndex</strong>, "None (overlap-based)", "Approximate", "Yes", "No"],
+    [<strong>MmapNgramIndex</strong>, "None (overlap-based)", "Approximate", "No (read-only)", "Yes"],
+    [<strong>MinHashIndex</strong>, "None (Jaccard via LSH)", "Approximate", "Yes", "No"],
+  ]}
+/>
+
+## Related
+
+- [String Metrics](/docs/api/string-metrics) -- distance and similarity functions used by BkTree and VpTree
+- [Batch Operations](/docs/api/batch-operations) -- `cdist`, `match_best`, and `match_batch` for brute-force comparison
+- [Pipeline](/docs/api/pipeline) -- use indexes implicitly via `block_lsh` and `block_qgram` blocking strategies

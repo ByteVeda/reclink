@@ -1,0 +1,401 @@
+---
+sidebar_position: 11
+title: DataFrame Integration
+description: Pandas and Polars accessors for fuzzy matching, phonetic encoding, deduplication, and fuzzy merges.
+---
+
+# DataFrame Integration
+
+reclink registers custom accessors on both Pandas and Polars so you can call fuzzy matching functions directly on Series and DataFrames. Accessors are registered automatically when you `import reclink` -- no extra setup required.
+
+```python
+import reclink  # registers .reclink accessor on Pandas and Polars
+```
+
+:::info Optional dependencies
+Pandas and Polars are optional. The accessor for each library is only registered if that library is importable. Install them with `pip install reclink[pandas]` or `pip install reclink[polars]`.
+:::
+
+---
+
+## Pandas Series Accessor
+
+Available as `series.reclink.*` on any `pd.Series` containing strings.
+
+### `series.reclink.match_best(candidates, scorer="jaro_winkler", threshold=None)`
+
+Find the best match for **each** value in the Series against a shared candidate list.
+
+```python
+import pandas as pd
+import reclink
+
+df = pd.DataFrame({"name": ["Jon Smith", "Jane Doe", "Bob"]})
+candidates = ["John Smith", "Janet Doe", "Robert Johnson"]
+
+df["name"].reclink.match_best(candidates, scorer="jaro_winkler", threshold=0.7)
+# 0    (John Smith, 0.915, 0)
+# 1      (Janet Doe, 0.867, 1)
+# 2                       None
+# Name: name, dtype: object
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`candidates`", "`list[str]`", "<em>required</em>", "Candidate strings to match against."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum similarity. Values below this return `None`."],
+  ]}
+/>
+
+**Returns:** `pd.Series` of `(matched_string, score, index)` tuples or `None`.
+
+### `series.reclink.phonetic(algorithm="soundex")`
+
+Apply a phonetic encoding to every value in the Series.
+
+```python
+df["name"].reclink.phonetic(algorithm="soundex")
+# 0    J525
+# 1    J500
+# 2    B100
+# Name: name, dtype: object
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`algorithm`", "`str`", '`"soundex"`', 'Phonetic algorithm: `"soundex"`, `"metaphone"`, `"double_metaphone"`, `"nysiis"`, `"caverphone"`, `"cologne_phonetic"`, `"beider_morse"`.'],
+  ]}
+/>
+
+**Returns:** `pd.Series` of phonetic code strings.
+
+### `series.reclink.deduplicate(threshold=0.85, scorer="jaro_winkler")`
+
+Identify groups of duplicate values within the Series using union-find clustering.
+
+```python
+df = pd.DataFrame({"name": ["John Smith", "Jon Smith", "Jane Doe", "Jon Smyth"]})
+
+df["name"].reclink.deduplicate(threshold=0.85)
+# [[0, 1, 3]]  -- indices 0, 1, and 3 are duplicates
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`threshold`", "`float`", "`0.85`", "Minimum similarity to consider two values duplicates."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+  ]}
+/>
+
+**Returns:** `list[list[int]]` -- groups of row indices. Only groups with two or more members are returned.
+
+---
+
+## Pandas DataFrame Accessor
+
+Available as `df.reclink.*` on any `pd.DataFrame`.
+
+### `df.reclink.fuzzy_merge(right, left_on, right_on, scorer="jaro_winkler", threshold=0.8)`
+
+Fuzzy-join two DataFrames on string columns. Each row in the left DataFrame is matched to its best counterpart in the right DataFrame.
+
+```python
+import pandas as pd
+import reclink
+
+left = pd.DataFrame({"firm": ["Acme Corp", "Globex Inc"], "revenue": [100, 200]})
+right = pd.DataFrame({"company": ["ACME Corporation", "Globex"], "sector": ["Tech", "Finance"]})
+
+merged = left.reclink.fuzzy_merge(right, left_on="firm", right_on="company", threshold=0.6)
+# firm        revenue  company_right       sector_right  _score
+# Acme Corp   100      ACME Corporation    Tech          0.87
+# Globex Inc  200      Globex              Finance       0.82
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`right`", "`pd.DataFrame`", "<em>required</em>", "Right DataFrame to merge with."],
+    ["`left_on`", "`str`", "<em>required</em>", "Column name in the left DataFrame."],
+    ["`right_on`", "`str`", "<em>required</em>", "Column name in the right DataFrame."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float`", "`0.8`", "Minimum similarity to include a match."],
+  ]}
+/>
+
+**Returns:** `pd.DataFrame` with left columns, right columns suffixed with `_right`, and a `_score` column. Returns an empty DataFrame if no matches meet the threshold.
+
+---
+
+## Polars Series Accessor
+
+Available as `series.reclink.*` on any `pl.Series` containing strings.
+
+### `series.reclink.match_best(candidates, scorer="jaro_winkler", threshold=None)`
+
+Find the best match for each value in the Series.
+
+```python
+import polars as pl
+import reclink
+
+s = pl.Series("name", ["Jon Smith", "Jane Doe", "Bob"])
+candidates = ["John Smith", "Janet Doe", "Robert Johnson"]
+
+s.reclink.match_best(candidates, scorer="jaro_winkler")
+# shape: (3,)
+# Series: 'name' [str]
+# [
+#   "John Smith"
+#   "Janet Doe"
+#   "Robert Johnson"
+# ]
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`candidates`", "`list[str]`", "<em>required</em>", "Candidate strings to match against."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum similarity. Values below return `null`."],
+  ]}
+/>
+
+**Returns:** `pl.Series` of best-match strings (or `null`).
+
+### `series.reclink.phonetic(algorithm="soundex")`
+
+Apply a phonetic encoding to every value.
+
+```python
+s = pl.Series("name", ["John Smith", "Janet Doe"])
+s.reclink.phonetic(algorithm="soundex")
+# shape: (2,)
+# Series: 'name' [str]
+# [
+#   "J525"
+#   "J533"
+# ]
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`algorithm`", "`str`", '`"soundex"`', "Phonetic algorithm name."],
+  ]}
+/>
+
+**Returns:** `pl.Series` of phonetic code strings.
+
+### `series.reclink.deduplicate(threshold=0.85, scorer="jaro_winkler")`
+
+Identify duplicate groups by index position, using union-find clustering.
+
+```python
+s = pl.Series("name", ["John Smith", "Jon Smith", "Jane Doe", "Jon Smyth"])
+s.reclink.deduplicate(threshold=0.85)
+# [[0, 1, 3]]
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`threshold`", "`float`", "`0.85`", "Minimum similarity for a duplicate pair."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+  ]}
+/>
+
+**Returns:** `list[list[int]]` -- groups of row indices with two or more members.
+
+---
+
+## Polars DataFrame Accessor
+
+Available as `df.reclink.*` on any `pl.DataFrame`.
+
+### `df.reclink.fuzzy_merge(right, left_on, right_on, scorer="jaro_winkler", threshold=0.8)`
+
+Fuzzy-join two Polars DataFrames on string columns.
+
+```python
+import polars as pl
+import reclink
+
+left = pl.DataFrame({"firm": ["Acme Corp", "Globex Inc"], "revenue": [100, 200]})
+right = pl.DataFrame({"company": ["ACME Corporation", "Globex"], "sector": ["Tech", "Finance"]})
+
+merged = left.reclink.fuzzy_merge(right, left_on="firm", right_on="company", threshold=0.6)
+# shape: (2, 5)
+# ┌────────────┬─────────┬──────────────────┬──────────────┬────────┐
+# │ firm       ┆ revenue ┆ company_right    ┆ sector_right ┆ _score │
+# ╞════════════╪═════════╪══════════════════╪══════════════╪════════╡
+# │ Acme Corp  ┆ 100     ┆ ACME Corporation ┆ Tech         ┆ 0.87   │
+# │ Globex Inc ┆ 200     ┆ Globex           ┆ Finance      ┆ 0.82   │
+# └────────────┴─────────┴──────────────────┴──────────────┴────────┘
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`right`", "`pl.DataFrame`", "<em>required</em>", "Right DataFrame to merge with."],
+    ["`left_on`", "`str`", "<em>required</em>", "Column name in the left DataFrame."],
+    ["`right_on`", "`str`", "<em>required</em>", "Column name in the right DataFrame."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float`", "`0.8`", "Minimum similarity to include a match."],
+  ]}
+/>
+
+**Returns:** `pl.DataFrame` with left columns, right columns suffixed with `_right`, and a `_score` column. Returns an empty DataFrame if no matches meet the threshold.
+
+---
+
+## Native Polars Plugin
+
+For maximum performance, reclink also ships a native Polars expression plugin that operates directly on Arrow arrays with zero GIL overhead. This avoids round-tripping through Python entirely.
+
+:::caution Build requirement
+The native plugin requires building reclink with `--features polars-plugin`. It is not included in the default PyPI wheel.
+:::
+
+```python
+import polars as pl
+from reclink._polars_plugin import similarity, phonetic, match_best
+```
+
+### `similarity(a, b, *, scorer="jaro_winkler")`
+
+Compute element-wise string similarity between two columns.
+
+```python
+df = pl.DataFrame({"a": ["John", "Jane"], "b": ["Jon", "Janet"]})
+
+df.with_columns(
+    similarity(pl.col("a"), pl.col("b"), scorer="jaro_winkler").alias("score")
+)
+# shape: (2, 3)
+# ┌──────┬───────┬───────┐
+# │ a    ┆ b     ┆ score │
+# ╞══════╪═══════╪═══════╡
+# │ John ┆ Jon   ┆ 0.93  │
+# │ Jane ┆ Janet ┆ 0.96  │
+# └──────┴───────┴───────┘
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`pl.Expr`", "<em>required</em>", "Left string column expression."],
+    ["`b`", "`pl.Expr`", "<em>required</em>", "Right string column expression."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', 'Similarity metric name (e.g., `"jaro_winkler"`, `"levenshtein"`, `"cosine"`).'],
+  ]}
+/>
+
+**Returns:** `pl.Expr` producing a `Float64` column of similarity scores.
+
+### `phonetic(expr, *, algorithm="soundex")`
+
+Apply phonetic encoding to a string column.
+
+```python
+df.with_columns(
+    phonetic(pl.col("a"), algorithm="soundex").alias("code")
+)
+# shape: (2, 3)
+# ┌──────┬───────┬──────┐
+# │ a    ┆ b     ┆ code │
+# ╞══════╪═══════╪══════╡
+# │ John ┆ Jon   ┆ J500 │
+# │ Jane ┆ Janet ┆ J500 │
+# └──────┴───────┴──────┘
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`expr`", "`pl.Expr`", "<em>required</em>", "String column expression."],
+    ["`algorithm`", "`str`", '`"soundex"`', 'Phonetic algorithm (e.g., `"soundex"`, `"metaphone"`, `"double_metaphone"`, `"beider_morse"`).'],
+  ]}
+/>
+
+**Returns:** `pl.Expr` producing a `Utf8` column of phonetic codes.
+
+### `match_best(expr, candidates, *, scorer="jaro_winkler", threshold=0.0)`
+
+Find the best matching candidate for each value in a column.
+
+```python
+candidates = ["John Smith", "Janet Doe", "Robert Johnson"]
+
+df = pl.DataFrame({"name": ["Jon Smith", "Jane Doe"]})
+df.with_columns(
+    match_best(pl.col("name"), candidates, scorer="jaro_winkler", threshold=0.7).alias("matched")
+)
+# shape: (2, 2)
+# ┌───────────┬────────────┐
+# │ name      ┆ matched    │
+# ╞═══════════╪════════════╡
+# │ Jon Smith ┆ John Smith │
+# │ Jane Doe  ┆ Janet Doe  │
+# └───────────┴────────────┘
+```
+
+#### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`expr`", "`pl.Expr`", "<em>required</em>", "String column expression."],
+    ["`candidates`", "`list[str]`", "<em>required</em>", "Candidate strings to match against."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float`", "`0.0`", "Minimum score. Values below this return `null`."],
+  ]}
+/>
+
+**Returns:** `pl.Expr` producing a `Utf8` column of best-match strings (or `null`).
+
+---
+
+## Accessor vs. Plugin: When to Use Which
+
+<Table
+  columns={["", "Accessor (`df.reclink.*`)", "Plugin (`reclink._polars_plugin`)"]}
+  rows={[
+    ["<strong>Setup</strong>", "Automatic on import", "Requires `--features polars-plugin` build"],
+    ["<strong>GIL</strong>", "Acquires GIL per row", "Zero GIL overhead"],
+    ["<strong>Best for</strong>", "Prototyping, small-to-medium datasets", "Production, large datasets, Polars lazy frames"],
+    ["<strong>Works with</strong>", "Pandas and Polars", "Polars only"],
+  ]}
+/>
+
+---
+
+## See Also
+
+- **[String Metrics](./string-metrics)** -- all available scorer names
+- **[Phonetic Algorithms](./phonetic)** -- all available phonetic algorithm names
+- **[Batch Operations](./batch-operations)** -- standalone `cdist`, `match_best`, `match_batch`
+- **[Deduplication Guide](/docs/guides/deduplication)** -- end-to-end dedup workflows with DataFrames

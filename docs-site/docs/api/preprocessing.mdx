@@ -1,0 +1,511 @@
+---
+sidebar_position: 3
+title: Preprocessing
+description: Reference for all text preprocessing, tokenization, transliteration, and normalization functions in reclink.
+---
+
+# Preprocessing
+
+Consistent preprocessing is critical for accurate fuzzy matching. reclink provides a comprehensive set of functions for cleaning, normalizing, tokenizing, and transliterating text -- all implemented in Rust for maximum throughput.
+
+All functions are imported directly from `reclink`.
+
+```python
+from reclink import fold_case, normalize_whitespace, clean_name
+```
+
+---
+
+## Basic Operations
+
+### `fold_case(s)`
+
+Converts a string to lowercase using Unicode case folding (more thorough than Python's `str.lower()`).
+
+```python
+from reclink import fold_case
+
+fold_case("HELLO World")  # "hello world"
+fold_case("Strasse")       # "strasse"
+```
+
+### `normalize_whitespace(s)`
+
+Collapses all consecutive whitespace (including tabs, newlines, and Unicode whitespace) into single spaces and strips leading/trailing whitespace.
+
+```python
+from reclink import normalize_whitespace
+
+normalize_whitespace("  too   many   spaces  ")  # "too many spaces"
+normalize_whitespace("line\none\ttwo")            # "line one two"
+```
+
+### `strip_punctuation(s)`
+
+Removes all Unicode punctuation characters.
+
+```python
+from reclink import strip_punctuation
+
+strip_punctuation("hello, world!")      # "hello world"
+strip_punctuation("O'Brien-Smith")      # "OBrienSmith"
+strip_punctuation("john.doe@email.com") # "johndoeemailcom"
+```
+
+### `standardize_name(s)`
+
+Combines multiple preprocessing steps into a single call: case folding, whitespace normalization, punctuation stripping, and common name standardization.
+
+```python
+from reclink import standardize_name
+
+standardize_name("  DR. John  Smith Jr.  ")  # "john smith"
+standardize_name("MCDONALD, Jane A.")        # "mcdonald jane"
+```
+
+### `normalize_unicode(s, form="nfkc")`
+
+Applies Unicode normalization. Supported forms: `"nfc"`, `"nfkc"`, `"nfd"`, `"nfkd"`.
+
+```python
+from reclink import normalize_unicode
+
+# NFKC converts compatibility characters to their canonical equivalents
+normalize_unicode("half")        # normalizes using NFKC by default
+normalize_unicode("cafe\u0301", form="nfc")  # "cafe" with composed accent
+```
+
+### `strip_diacritics(s)`
+
+Removes diacritical marks (accents) from characters while preserving the base character.
+
+```python
+from reclink import strip_diacritics
+
+strip_diacritics("cafe")       # "cafe"
+strip_diacritics("resume")     # "resume"
+strip_diacritics("nino")       # "nino"
+```
+
+### `remove_stop_words(s)`
+
+Removes common English stop words (the, a, an, of, and, etc.) from the string.
+
+```python
+from reclink import remove_stop_words
+
+remove_stop_words("the university of california")  # "university california"
+remove_stop_words("bank of america")                # "bank america"
+```
+
+### `expand_abbreviations(s)`
+
+Expands common abbreviations to their full forms.
+
+```python
+from reclink import expand_abbreviations
+
+expand_abbreviations("St. Louis")   # "Saint Louis"
+expand_abbreviations("Dr. Smith")   # "Doctor Smith"
+expand_abbreviations("Ave.")        # "Avenue"
+```
+
+### `regex_replace(s, pattern, replacement)`
+
+Replaces all matches of a regular expression pattern with the given replacement string.
+
+```python
+from reclink import regex_replace
+
+regex_replace("abc-123-def", r"\d+", "")   # "abc--def"
+regex_replace("hello world", r"\s+", "_")  # "hello_world"
+```
+
+### Parameters
+
+<Table
+  columns={["Function", "Parameters", "Return"]}
+  rows={[
+    ["`fold_case(s)`", "`s: str`", "`str`"],
+    ["`normalize_whitespace(s)`", "`s: str`", "`str`"],
+    ["`strip_punctuation(s)`", "`s: str`", "`str`"],
+    ["`standardize_name(s)`", "`s: str`", "`str`"],
+    ['`normalize_unicode(s, form)`', '`s: str`, `form: str = "nfkc"`', "`str`"],
+    ["`strip_diacritics(s)`", "`s: str`", "`str`"],
+    ["`remove_stop_words(s)`", "`s: str`", "`str`"],
+    ["`expand_abbreviations(s)`", "`s: str`", "`str`"],
+    ["`regex_replace(s, pattern, replacement)`", "`s: str`, `pattern: str`, `replacement: str`", "`str`"],
+  ]}
+/>
+
+---
+
+## Tokenization
+
+Tokenizers split strings into lists of tokens for use with token-based metrics or downstream processing.
+
+### `ngram_tokenize(s, n=2)`
+
+Splits a string into overlapping character n-grams.
+
+```python
+from reclink import ngram_tokenize
+
+ngram_tokenize("hello")        # ["he", "el", "ll", "lo"]
+ngram_tokenize("hello", n=3)   # ["hel", "ell", "llo"]
+```
+
+### `whitespace_tokenize(s)`
+
+Splits a string on whitespace boundaries.
+
+```python
+from reclink import whitespace_tokenize
+
+whitespace_tokenize("John Smith Jr")  # ["John", "Smith", "Jr"]
+```
+
+### `character_tokenize(s)`
+
+Splits a string into individual characters.
+
+```python
+from reclink import character_tokenize
+
+character_tokenize("hello")  # ["h", "e", "l", "l", "o"]
+```
+
+### `smart_tokenize(s)`
+
+CJK-aware tokenizer that handles Chinese, Japanese, and Korean characters alongside Latin text. CJK characters are tokenized individually while Latin text is split on whitespace.
+
+```python
+from reclink import smart_tokenize
+
+smart_tokenize("hello world")  # ["hello", "world"]
+smart_tokenize("Tokyo")        # individual CJK characters tokenized
+```
+
+### `cjk_ngram_tokenize(s, n=2)`
+
+Generates character n-grams specifically for CJK text.
+
+```python
+from reclink import cjk_ngram_tokenize
+
+cjk_ngram_tokenize("abcdef", n=2)  # CJK-aware bigrams
+```
+
+### Parameters
+
+<Table
+  columns={["Function", "Parameters", "Return"]}
+  rows={[
+    ["`ngram_tokenize(s, n)`", "`s: str`, `n: int = 2`", "`list[str]`"],
+    ["`whitespace_tokenize(s)`", "`s: str`", "`list[str]`"],
+    ["`character_tokenize(s)`", "`s: str`", "`list[str]`"],
+    ["`smart_tokenize(s)`", "`s: str`", "`list[str]`"],
+    ["`cjk_ngram_tokenize(s, n)`", "`s: str`, `n: int = 2`", "`list[str]`"],
+  ]}
+/>
+
+---
+
+## Domain Preprocessors
+
+Higher-level functions tailored for specific data types. Each applies a sensible chain of normalization steps.
+
+### `clean_name(s)`
+
+Cleans personal names by removing titles, suffixes, punctuation, extra whitespace, and folding case.
+
+```python
+from reclink import clean_name
+
+clean_name("  DR. John  Smith Jr.  ")   # "john smith"
+clean_name("Mrs. Jane O'Brien-Doe")     # "jane obrien doe"
+clean_name("SMITH, JOHN A.")            # "smith john"
+```
+
+### `clean_address(s)`
+
+Normalizes street addresses by expanding abbreviations, removing punctuation, and standardizing whitespace.
+
+```python
+from reclink import clean_address
+
+clean_address("123 N. Main St., Apt. 4B")  # "123 north main street apartment 4b"
+clean_address("P.O. Box 456")              # "po box 456"
+```
+
+### `clean_company(s)`
+
+Normalizes company names by removing legal suffixes (Inc., LLC, Ltd., etc.), punctuation, and folding case.
+
+```python
+from reclink import clean_company
+
+clean_company("Acme Corp., Inc.")      # "acme corp"
+clean_company("Smith & Sons, LLC")     # "smith sons"
+clean_company("THE BOEING COMPANY")    # "boeing"
+```
+
+### `normalize_email(s)`
+
+Normalizes email addresses: lowercases, removes dots from the local part (Gmail-style), and strips plus-addressing.
+
+```python
+from reclink import normalize_email
+
+normalize_email("John.Doe+work@Gmail.com")  # "johndoe@gmail.com"
+```
+
+### `normalize_url(s)`
+
+Normalizes URLs by lowercasing the scheme and host, removing trailing slashes, default ports, and common tracking parameters.
+
+```python
+from reclink import normalize_url
+
+normalize_url("HTTPS://WWW.Example.COM/path/")  # "https://www.example.com/path"
+```
+
+### Parameters
+
+<Table
+  columns={["Function", "Parameters", "Return"]}
+  rows={[
+    ["`clean_name(s)`", "`s: str`", "`str`"],
+    ["`clean_address(s)`", "`s: str`", "`str`"],
+    ["`clean_company(s)`", "`s: str`", "`str`"],
+    ["`normalize_email(s)`", "`s: str`", "`str`"],
+    ["`normalize_url(s)`", "`s: str`", "`str`"],
+  ]}
+/>
+
+---
+
+## Transliteration
+
+Convert non-Latin scripts to their Latin equivalents. Essential for cross-script name matching.
+
+### Script-specific transliterators
+
+```python
+from reclink import (
+    transliterate_cyrillic,
+    transliterate_greek,
+    transliterate_arabic,
+    transliterate_hebrew,
+    transliterate_devanagari,
+    transliterate_hangul,
+)
+
+transliterate_cyrillic("Ivanov")       # "Ivanov" (Cyrillic to Latin)
+transliterate_greek("alpha")           # Greek script to Latin
+transliterate_arabic("text")           # Arabic script to Latin
+transliterate_hebrew("text")           # Hebrew script to Latin
+transliterate_devanagari("text")       # Devanagari script to Latin
+transliterate_hangul("text")           # Korean Hangul to Latin
+```
+
+### Parameters
+
+Each transliterator takes a single parameter:
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string containing characters from the target script"],
+  ]}
+/>
+
+### Returns
+
+`str` -- transliterated string with non-Latin characters replaced by their Latin equivalents. Characters that are already Latin are passed through unchanged.
+
+---
+
+## Arabic & Hebrew
+
+Specialized normalization functions for Arabic and Hebrew text.
+
+### `normalize_arabic(s)`
+
+Normalizes Arabic text by standardizing letter forms (e.g., various forms of Alef, Taa Marbuta).
+
+```python
+from reclink import normalize_arabic
+
+normalize_arabic("arabic text")  # normalized form
+```
+
+### `strip_arabic_diacritics(s)`
+
+Removes Arabic diacritical marks (tashkeel/harakat) such as Fatha, Damma, Kasra, Shadda, and Sukun.
+
+```python
+from reclink import strip_arabic_diacritics
+
+strip_arabic_diacritics("arabic text with diacritics")  # diacritics removed
+```
+
+### `strip_hebrew_diacritics(s)`
+
+Removes Hebrew diacritical marks (nikkud) such as vowel points and cantillation marks.
+
+```python
+from reclink import strip_hebrew_diacritics
+
+strip_hebrew_diacritics("hebrew text with nikkud")  # nikkud removed
+```
+
+### `strip_bidi_marks(s)`
+
+Removes Unicode bidirectional control characters (LRM, RLM, LRE, RLE, etc.) that can interfere with string comparison.
+
+```python
+from reclink import strip_bidi_marks
+
+strip_bidi_marks("text\u200fwith\u200emarks")  # "textwithmarks"
+```
+
+### Parameters
+
+<Table
+  columns={["Function", "Parameters", "Return"]}
+  rows={[
+    ["`normalize_arabic(s)`", "`s: str`", "`str`"],
+    ["`strip_arabic_diacritics(s)`", "`s: str`", "`str`"],
+    ["`strip_hebrew_diacritics(s)`", "`s: str`", "`str`"],
+    ["`strip_bidi_marks(s)`", "`s: str`", "`str`"],
+  ]}
+/>
+
+---
+
+## Synonym Expansion
+
+### `synonym_expand(s, table)`
+
+Replaces tokens in a string using a custom synonym lookup table. Useful for domain-specific abbreviations and aliases.
+
+```python
+from reclink import synonym_expand
+
+table = {
+    "st": "street",
+    "ave": "avenue",
+    "blvd": "boulevard",
+    "dr": "drive",
+}
+
+synonym_expand("123 main st", table)    # "123 main street"
+synonym_expand("oak ave", table)        # "oak avenue"
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string"],
+    ["`table`", "`dict[str, str]`", <em>required</em>, "Mapping from tokens to their expansions. Matching is case-sensitive on the whitespace-tokenized input."],
+  ]}
+/>
+
+### Returns
+
+`str` -- the string with matched tokens replaced.
+
+---
+
+## Batch Processing
+
+Batch variants process lists of strings in parallel using Rayon thread pools. Use these when preprocessing entire columns of a DataFrame or large string collections.
+
+### Preprocessing batch
+
+```python
+from reclink import preprocess_batch
+
+# Apply a chain of preprocessing steps to every string
+cleaned = preprocess_batch(
+    ["  DR. John Smith  ", "JANE DOE", "Bob O'Brien"],
+    steps=["fold_case", "strip_punctuation", "normalize_whitespace"],
+)
+# ["dr john smith", "jane doe", "bob obrien"]
+```
+
+### Tokenization batch
+
+```python
+from reclink import (
+    ngram_tokenize_batch,
+    whitespace_tokenize_batch,
+    character_tokenize_batch,
+    smart_tokenize_batch,
+    cjk_ngram_tokenize_batch,
+    smart_tokenize_ngram_batch,
+)
+
+strings = ["hello world", "foo bar"]
+
+ngram_tokenize_batch(strings)            # [["he","el","ll",...], ["fo","oo",...]]
+whitespace_tokenize_batch(strings)       # [["hello","world"], ["foo","bar"]]
+character_tokenize_batch(strings)        # [["h","e","l",...], ["f","o","o",...]]
+smart_tokenize_batch(strings)            # CJK-aware tokenization for each string
+cjk_ngram_tokenize_batch(strings)        # CJK n-gram tokenization for each string
+smart_tokenize_ngram_batch(strings)      # combined smart + n-gram tokenization
+```
+
+### Parameters
+
+<Table
+  columns={["Function", "Parameters", "Return"]}
+  rows={[
+    ["`preprocess_batch(strings, steps)`", "`strings: list[str]`, `steps: list[str]`", "`list[str]`"],
+    ["`ngram_tokenize_batch(strings, n)`", "`strings: list[str]`, `n: int = 2`", "`list[list[str]]`"],
+    ["`whitespace_tokenize_batch(strings)`", "`strings: list[str]`", "`list[list[str]]`"],
+    ["`character_tokenize_batch(strings)`", "`strings: list[str]`", "`list[list[str]]`"],
+    ["`smart_tokenize_batch(strings)`", "`strings: list[str]`", "`list[list[str]]`"],
+    ["`cjk_ngram_tokenize_batch(strings, n)`", "`strings: list[str]`, `n: int = 2`", "`list[list[str]]`"],
+    ["`smart_tokenize_ngram_batch(strings)`", "`strings: list[str]`", "`list[list[str]]`"],
+  ]}
+/>
+
+:::tip Performance
+Batch functions use Rayon for automatic parallelism. For datasets with 1,000+ strings, batch functions are significantly faster than calling the single-string variant in a Python loop.
+:::
+
+---
+
+## Chaining Preprocessors
+
+The pipeline API supports chaining multiple preprocessing steps declaratively:
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("name", ["fold_case", "strip_punctuation", "normalize_whitespace"])
+    .preprocess("address", ["fold_case", "expand_abbreviations", "normalize_whitespace"])
+    .compare_string("name", metric="jaro_winkler")
+    .compare_string("address", metric="token_sort_ratio")
+    .classify_threshold(0.85)
+    .build()
+)
+```
+
+Valid step names for `.preprocess()` correspond to the function names on this page: `"fold_case"`, `"normalize_whitespace"`, `"strip_punctuation"`, `"standardize_name"`, `"normalize_unicode"`, `"strip_diacritics"`, `"remove_stop_words"`, `"expand_abbreviations"`, `"clean_name"`, `"clean_address"`, `"clean_company"`.
+
+---
+
+## See Also
+
+- **[String Metrics](./string-metrics)** -- compare strings after preprocessing
+- **[Phonetic Algorithms](./phonetic)** -- encode strings by pronunciation
+- **[Batch Operations](./batch-operations)** -- `preprocess_batch` and other vectorized functions
+- **[Pipeline API](./pipeline)** -- declarative preprocessing in record linkage pipelines
+- **[Multilingual Guide](/docs/guides/multilingual)** -- end-to-end guide for cross-script matching

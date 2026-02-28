@@ -1,0 +1,261 @@
+---
+sidebar_position: 7
+title: Scoring & Presets
+description: Combine multiple string metrics with weighted scoring and use pre-tuned presets for common record linkage scenarios.
+---
+
+# Scoring & Presets
+
+The `CompositeScorer` combines multiple string similarity metrics into a single weighted score. Pre-tuned presets are available for common matching scenarios such as person names and addresses.
+
+---
+
+## CompositeScorer
+
+### Construction
+
+Create a scorer by specifying a list of `(metric_name, weight)` tuples. Weights are normalized internally, so they do not need to sum to 1.
+
+```python
+from reclink import CompositeScorer
+
+scorer = CompositeScorer([
+    ("jaro_winkler", 0.6),
+    ("token_sort", 0.4),
+])
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`components`", "`list[tuple[str, float]]`", "List of `(metric_name, weight)` pairs. Metric names are any string metric: `\"jaro_winkler\"`, `\"levenshtein\"`, `\"cosine\"`, `\"token_sort\"`, `\"token_set\"`, `\"phonetic_hybrid\"`, etc."],
+  ]}
+/>
+
+### CompositeScorer.preset(name)
+
+Load a pre-configured scorer by name.
+
+```python
+scorer = CompositeScorer.preset("name_matching")
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`name`", "`str`", "Preset name: `\"name_matching\"`, `\"address_matching\"`, or `\"general_purpose\"`."],
+  ]}
+/>
+
+**Returns:** `CompositeScorer`
+
+### scorer.similarity(a, b)
+
+Compute the weighted similarity between two strings.
+
+```python
+scorer.similarity("Jon Smith", "John Smyth")  # 0.89
+```
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`a`", "`str`", "First string."],
+    ["`b`", "`str`", "Second string."],
+  ]}
+/>
+
+**Returns:** `float` in `[0, 1]`.
+
+### scorer.match_best(query, candidates, threshold)
+
+Find the single best match from a list of candidates.
+
+```python
+result = scorer.match_best("Jon Smith", ["John Smith", "Jane Doe", "Bob Jones"])
+# ("John Smith", 0.96, 0)   -> (string, score, index)
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "--", "Query string."],
+    ["`candidates`", "`list[str]`", "--", "Candidate strings to compare against."],
+    ["`threshold`", "`float | None`", "`None`", "Minimum score. If no candidate meets the threshold, returns `None`."],
+  ]}
+/>
+
+**Returns:** `tuple[str, float, int] | None` -- `(matched_string, score, index)` or `None`.
+
+### scorer.match_batch(query, candidates, threshold, limit)
+
+Find all candidates above a score threshold, optionally limited to the top results.
+
+```python
+results = scorer.match_batch(
+    "Jon Smith",
+    ["John Smith", "Jane Doe", "Jonathan Smyth"],
+    threshold=0.7,
+    limit=5,
+)
+# [("John Smith", 0.96, 0), ("Jonathan Smyth", 0.82, 2)]
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "--", "Query string."],
+    ["`candidates`", "`list[str]`", "--", "Candidate strings."],
+    ["`threshold`", "`float | None`", "`None`", "Minimum score to include a candidate."],
+    ["`limit`", "`int | None`", "`None`", "Maximum number of results to return."],
+  ]}
+/>
+
+**Returns:** `list[tuple[str, float, int]]` -- sorted by descending score.
+
+---
+
+## Presets
+
+Pre-tuned scorers are available as factory functions and via `CompositeScorer.preset()`.
+
+### name_matching
+
+Optimized for person-name matching. Balances edit-distance sensitivity (Jaro-Winkler), token-order invariance (Token Sort), and phonetic similarity.
+
+```python
+from reclink.presets import name_matching
+
+scorer = name_matching()
+scorer.similarity("Jon Smith", "John Smyth")  # 0.89
+```
+
+Or equivalently:
+
+```python
+scorer = CompositeScorer.preset("name_matching")
+```
+
+<Table
+  columns={["Metric", "Weight"]}
+  rows={[
+    ["`jaro_winkler`", "0.5"],
+    ["`token_sort`", "0.3"],
+    ["`phonetic_hybrid`", "0.2"],
+  ]}
+/>
+
+### address_matching
+
+Optimized for street addresses, where word order varies and abbreviations are common.
+
+```python
+from reclink.presets import address_matching
+
+scorer = address_matching()
+scorer.similarity("123 Main St", "123 Main Street")
+```
+
+Or equivalently:
+
+```python
+scorer = CompositeScorer.preset("address_matching")
+```
+
+<Table
+  columns={["Metric", "Weight"]}
+  rows={[
+    ["`token_set`", "0.5"],
+    ["`jaccard`", "0.3"],
+    ["`levenshtein`", "0.2"],
+  ]}
+/>
+
+### general_purpose
+
+A balanced scorer for general text matching.
+
+```python
+from reclink.presets import general_purpose
+
+scorer = general_purpose()
+scorer.similarity("quick brown fox", "the quick brown foxes")
+```
+
+Or equivalently:
+
+```python
+scorer = CompositeScorer.preset("general_purpose")
+```
+
+<Table
+  columns={["Metric", "Weight"]}
+  rows={[
+    ["`jaro_winkler`", "0.4"],
+    ["`cosine`", "0.4"],
+    ["`token_sort`", "0.2"],
+  ]}
+/>
+
+---
+
+## Examples
+
+### Custom scorer for company names
+
+```python
+from reclink import CompositeScorer
+
+scorer = CompositeScorer([
+    ("token_set", 0.5),       # "IBM Corp" vs "Corp IBM"
+    ("jaro_winkler", 0.3),    # Short-range typos
+    ("cosine", 0.2),          # Token overlap
+])
+
+scorer.similarity("Acme Corporation", "ACME Corp.")      # High
+scorer.similarity("Acme Corporation", "Beta Industries")  # Low
+```
+
+### Using presets with match_batch
+
+```python
+from reclink.presets import name_matching
+
+scorer = name_matching()
+
+candidates = [
+    "John Smith",
+    "Jane Doe",
+    "Jonathan Smyth",
+    "Bob Johnson",
+    "Jon Smithe",
+]
+
+results = scorer.match_batch("Jon Smith", candidates, threshold=0.75)
+for name, score, idx in results:
+    print(f"  {name} ({score:.3f})")
+# John Smith (0.960)
+# Jon Smithe (0.944)
+# Jonathan Smyth (0.823)
+```
+
+### Comparing presets
+
+```python
+from reclink.presets import name_matching, address_matching, general_purpose
+
+a, b = "123 N Main Street", "123 North Main St"
+
+print(f"name_matching:    {name_matching().similarity(a, b):.3f}")
+print(f"address_matching: {address_matching().similarity(a, b):.3f}")
+print(f"general_purpose:  {general_purpose().similarity(a, b):.3f}")
+```
+
+---
+
+## Related
+
+- [String Metrics](/docs/api/string-metrics) -- all available metric names for `CompositeScorer`
+- [Batch Operations](/docs/api/batch-operations) -- `match_best` and `match_batch` for single-metric matching
+- [Pipeline](/docs/api/pipeline) -- use comparators and classifiers for full record linkage workflows
+- [Evaluation](/docs/api/evaluation) -- measure quality of matching results

@@ -1,0 +1,345 @@
+---
+sidebar_position: 2
+title: Phonetic Algorithms
+description: Reference for all phonetic encoding algorithms and language detection in reclink.
+---
+
+# Phonetic Algorithms
+
+Phonetic algorithms encode strings based on how they sound rather than how they are spelled. Two names with different spellings but similar pronunciation will produce the same (or similar) phonetic code, making these algorithms essential for name matching and deduplication.
+
+All functions are imported directly from `reclink`.
+
+```python
+from reclink import soundex, metaphone, double_metaphone
+```
+
+---
+
+## Overview
+
+<Table
+  columns={["Algorithm", "Origin", "Code format", "Best for"]}
+  rows={[
+    [<strong>Soundex</strong>, "US Census (1880s)", "1 letter + 3 digits (e.g., `S530`)", "English surnames"],
+    [<strong>Metaphone</strong>, "Lawrence Philips (1990)", "Variable-length consonant code", "General English"],
+    [<strong>Double Metaphone</strong>, "Lawrence Philips (2000)", "Two codes (primary + alternate)", "Multi-origin English names"],
+    [<strong>NYSIIS</strong>, "NY State (1970)", "Up to 6 characters", "American names"],
+    [<strong>Caverphone</strong>, "NZ Govt (2002)", "10-character code", "NZ/AU English names"],
+    [<strong>Cologne Phonetic</strong>, "Hans Postel (1969)", "Numeric code", "German names and words"],
+    [<strong>Beider-Morse</strong>, "Stephen Morse (2008)", "`|`-separated variants", "Multi-ethnic name matching"],
+  ]}
+/>
+
+---
+
+## `soundex(s)`
+
+The original American Soundex algorithm. Returns a 4-character code consisting of an uppercase letter followed by three digits.
+
+```python
+from reclink import soundex
+
+soundex("Smith")    # "S530"
+soundex("Smyth")    # "S530"   -- same code
+soundex("Robert")   # "R163"
+soundex("Rupert")   # "R163"   -- same code
+soundex("Ashcraft") # "A261"
+soundex("")         # "0000"
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to encode"],
+  ]}
+/>
+
+### Returns
+
+`str` -- a 4-character Soundex code.
+
+---
+
+## `metaphone(s)`
+
+Produces a variable-length phonetic code using more refined rules than Soundex. Handles common English letter combinations (e.g., `ph` -> `F`, `ght` -> `T`).
+
+```python
+from reclink import metaphone
+
+metaphone("Smith")     # "SM0"
+metaphone("Schmidt")   # "SXMTT"
+metaphone("Phone")     # "FN"
+metaphone("Knight")    # "NT"
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to encode"],
+  ]}
+/>
+
+### Returns
+
+`str` -- variable-length Metaphone code.
+
+---
+
+## `double_metaphone(s)`
+
+An improved version of Metaphone that returns two codes: a **primary** code and an **alternate** code. The alternate captures secondary pronunciations common in names of non-English origin.
+
+```python
+from reclink import double_metaphone
+
+double_metaphone("John")       # ("JN", "AN")
+double_metaphone("Smith")      # ("SM0", "XMT")
+double_metaphone("Schmidt")    # ("XMTT", "SMTT")
+double_metaphone("Catherine")  # ("K0RN", "KTRN")
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to encode"],
+  ]}
+/>
+
+### Returns
+
+`tuple[str, str]` -- `(primary_code, alternate_code)`. When there is no meaningful alternate, the second element may equal the first.
+
+---
+
+## `nysiis(s)`
+
+New York State Identification and Intelligence System. Returns an alphabetic code of up to 6 characters. More accurate than Soundex for American names.
+
+```python
+from reclink import nysiis
+
+nysiis("Macintosh")  # "MCANT"
+nysiis("Mcknight")   # "MCNAG"
+nysiis("Johnson")    # "JANSAN"
+nysiis("Jonson")     # "JANSAN"  -- same code
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to encode"],
+  ]}
+/>
+
+### Returns
+
+`str` -- up to 6 alphabetic characters.
+
+---
+
+## `caverphone(s)`
+
+Developed for the Caversham Project (New Zealand). Produces a 10-character code optimized for New Zealand and Australian English names.
+
+```python
+from reclink import caverphone
+
+caverphone("Thompson")  # "TMSN111111"
+caverphone("Thomson")   # "TMSN111111"  -- same code
+caverphone("Lee")        # "L111111111"
+caverphone("Li")         # "L111111111"  -- same code
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to encode"],
+  ]}
+/>
+
+### Returns
+
+`str` -- 10-character Caverphone code.
+
+---
+
+## `cologne_phonetic(s)`
+
+Also known as the "Kolner Phonetik." Designed specifically for the German language. Returns a purely numeric code.
+
+```python
+from reclink import cologne_phonetic
+
+cologne_phonetic("Muller")   # "657"
+cologne_phonetic("Mueller")  # "657"   -- same code
+cologne_phonetic("Muller")   # "657"
+cologne_phonetic("Breschnew") # "17863"
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to encode"],
+  ]}
+/>
+
+### Returns
+
+`str` -- variable-length numeric code.
+
+---
+
+## `beider_morse(s, ashkenazi=False)`
+
+The Beider-Morse Phonetic Matching algorithm. Designed for matching names across multiple languages and ethnicities. Returns multiple possible phonetic encodings separated by `|`.
+
+```python
+from reclink import beider_morse
+
+beider_morse("Schwartz")                 # "svarts|zvarts|..."
+beider_morse("Cohen")                    # "koen|kYn|..."
+beider_morse("Cohen", ashkenazi=True)    # Ashkenazi-specific rules
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to encode"],
+    ["`ashkenazi`", "`bool`", "`False`", "When `True`, use Ashkenazi-specific phonetic rules"],
+  ]}
+/>
+
+### Returns
+
+`str` -- `|`-separated phonetic variants.
+
+---
+
+## `detect_language(s)`
+
+Detects the likely language of a string based on character analysis. Useful for selecting the appropriate phonetic algorithm or preprocessing pipeline.
+
+```python
+from reclink import detect_language
+
+detect_language("Mueller")   # "german"
+detect_language("Smith")     # "english"
+detect_language("Ivanov")    # "russian"
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`s`", "`str`", <em>required</em>, "Input string to analyze"],
+  ]}
+/>
+
+### Returns
+
+`str` -- detected language name (lowercase).
+
+---
+
+## `phonetic_hybrid(a, b, phonetic="soundex", metric="jaro_winkler", phonetic_weight=0.3)`
+
+Combines a string similarity metric with a phonetic comparison into a single blended score. The formula is:
+
+```
+score = (1 - phonetic_weight) * metric(a, b) + phonetic_weight * metric(phonetic(a), phonetic(b))
+```
+
+This is particularly useful when names may be spelled differently but sound alike.
+
+```python
+from reclink import phonetic_hybrid
+
+# Default: 70% Jaro-Winkler + 30% Soundex-based Jaro-Winkler
+phonetic_hybrid("Smith", "Smyth")          # high score (same Soundex)
+phonetic_hybrid("Robert", "Rupert")        # boosted by shared Soundex code
+
+# German names with Cologne Phonetic
+phonetic_hybrid(
+    "Mueller", "Muller",
+    phonetic="cologne_phonetic",
+    metric="jaro_winkler",
+    phonetic_weight=0.5,
+)
+
+# Multi-ethnic matching with Beider-Morse
+phonetic_hybrid(
+    "Schwartz", "Svarts",
+    phonetic="beider_morse",
+    metric="levenshtein_similarity",
+    phonetic_weight=0.4,
+)
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`str`", <em>required</em>, "First string"],
+    ["`b`", "`str`", <em>required</em>, "Second string"],
+    ["`phonetic`", "`str`", '`"soundex"`', 'Phonetic algorithm to use. One of: `"soundex"`, `"metaphone"`, `"double_metaphone"`, `"nysiis"`, `"caverphone"`, `"cologne_phonetic"`, `"beider_morse"`'],
+    ["`metric`", "`str`", '`"jaro_winkler"`', "String similarity metric to apply to both raw and phonetic strings"],
+    ["`phonetic_weight`", "`float`", "`0.3`", "Weight given to the phonetic component. Must be in `[0, 1]`."],
+  ]}
+/>
+
+### Returns
+
+`float` in `[0, 1]`.
+
+---
+
+## Choosing the Right Algorithm
+
+<Table
+  columns={["Scenario", "Recommended algorithm"]}
+  rows={[
+    ["English surnames", "`soundex` or `double_metaphone`"],
+    ["General English words", "`metaphone`"],
+    ["Names with multiple possible origins", "`double_metaphone` or `beider_morse`"],
+    ["German names", "`cologne_phonetic`"],
+    ["New Zealand / Australian names", "`caverphone`"],
+    ["American names (government records)", "`nysiis`"],
+    ["Multi-ethnic datasets", "`beider_morse`"],
+    ["Unsure / mixed data", "`phonetic_hybrid` with `double_metaphone`"],
+  ]}
+/>
+
+---
+
+## Edge Cases
+
+- Empty strings return an empty code (or `"0000"` for Soundex).
+- Non-alphabetic characters are generally ignored.
+- Unicode characters are handled by transliteration where applicable (e.g., `cologne_phonetic` handles German umlauts).
+
+---
+
+## See Also
+
+- **[String Metrics](./string-metrics)** -- all distance and similarity functions
+- **[Preprocessing](./preprocessing)** -- `transliterate_cyrillic`, `transliterate_greek`, and other transliteration functions
+- **[Batch Operations](./batch-operations)** -- `phonetic_batch_arrow` for encoding entire columns at once
+- **[Concepts](/docs/getting-started/concepts#phonetic-algorithms)** -- conceptual overview of phonetic matching

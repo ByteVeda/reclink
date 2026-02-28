@@ -1,0 +1,245 @@
+---
+sidebar_position: 12
+title: CLI Reference
+description: Command-line interface for deduplication, record linkage, matching, and score explanation.
+---
+
+# CLI Reference
+
+reclink includes a command-line interface for common fuzzy matching tasks. It is available as the `reclink` command after installation, or as `python -m reclink`.
+
+```bash
+reclink --help
+reclink --version
+python -m reclink --help
+```
+
+---
+
+## `reclink dedupe`
+
+Deduplicate records in a CSV file. Builds a pipeline internally with preprocessing, sorted-neighborhood blocking, string comparison, and threshold classification.
+
+```bash
+reclink dedupe --input data.csv --field name --threshold 0.85 --output results.csv
+```
+
+### Options
+
+<Table
+  columns={["Flag", "Short", "Type", "Default", "Description"]}
+  rows={[
+    ["`--input`", "`-i`", "`str`", "<em>required</em>", "Input CSV file path."],
+    ["`--field`", "`-f`", "`str`", "<em>required</em>", "Column name to match on."],
+    ["`--threshold`", "`-t`", "`float`", "`0.85`", "Minimum similarity score to consider a match."],
+    ["`--scorer`", "`-s`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`--id-column`", "", "`str`", '`"id"`', "Name of the ID column. If absent, sequential IDs are auto-assigned."],
+    ["`--output`", "`-o`", "`str`", "<em>None</em>", "Output file path. If omitted, results are printed to stdout."],
+    ["`--format`", "", "`csv` or `json`", "`csv`", "Output format (only used when `--output` is specified)."],
+  ]}
+/>
+
+### Output
+
+When writing to a file, the output contains these columns:
+
+<Table
+  columns={["Column", "Description"]}
+  rows={[
+    ["`left_id`", "ID of the first record in the pair."],
+    ["`right_id`", "ID of the second record in the pair."],
+    ["`score`", "Similarity score."],
+    ["`match_class`", "Classification label (if applicable)."],
+  ]}
+/>
+
+### Example
+
+```bash
+# Deduplicate with a strict threshold, output as JSON
+reclink dedupe \
+  --input customers.csv \
+  --field full_name \
+  --threshold 0.92 \
+  --scorer jaro_winkler \
+  --id-column customer_id \
+  --output dupes.json \
+  --format json
+```
+
+When no `--output` is given, results are printed to the terminal:
+
+```
+  cust_001 <-> cust_047  score=0.9412
+  cust_003 <-> cust_089  score=0.9156
+
+2 duplicate pair(s) found.
+```
+
+---
+
+## `reclink link`
+
+Link records between two CSV files. Both files must share the field name specified by `--field`.
+
+```bash
+reclink link --left a.csv --right b.csv --field name --threshold 0.8
+```
+
+### Options
+
+<Table
+  columns={["Flag", "Short", "Type", "Default", "Description"]}
+  rows={[
+    ["`--left`", "`-l`", "`str`", "<em>required</em>", "Left CSV file path."],
+    ["`--right`", "`-r`", "`str`", "<em>required</em>", "Right CSV file path."],
+    ["`--field`", "`-f`", "`str`", "<em>required</em>", "Column name to match on (must exist in both files)."],
+    ["`--threshold`", "`-t`", "`float`", "`0.85`", "Minimum similarity score."],
+    ["`--scorer`", "`-s`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`--id-column`", "", "`str`", '`"id"`', "ID column name. If absent, IDs are auto-assigned as `left_0`, `right_0`, etc."],
+    ["`--output`", "`-o`", "`str`", "<em>None</em>", "Output file path."],
+    ["`--format`", "", "`csv` or `json`", "`csv`", "Output format."],
+  ]}
+/>
+
+### Example
+
+```bash
+reclink link \
+  --left vendors_a.csv \
+  --right vendors_b.csv \
+  --field company_name \
+  --threshold 0.75 \
+  --output links.csv
+```
+
+```
+Found 12 links. Results written to links.csv
+```
+
+---
+
+## `reclink match`
+
+Find the best matches for a single query string against a file of candidates (one string per line).
+
+```bash
+reclink match --query "John Smith" --candidates-file names.txt --limit 5
+```
+
+### Options
+
+<Table
+  columns={["Flag", "Short", "Type", "Default", "Description"]}
+  rows={[
+    ["`--query`", "`-q`", "`str`", "<em>required</em>", "The query string to match."],
+    ["`--candidates-file`", "`-c`", "`str`", "<em>required</em>", "Path to a text file with one candidate per line."],
+    ["`--threshold`", "`-t`", "`float`", "<em>None</em>", "Minimum score filter."],
+    ["`--scorer`", "`-s`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`--limit`", "`-n`", "`int`", "`10`", "Maximum number of results to return."],
+  ]}
+/>
+
+### Output
+
+Results are printed to stdout, sorted by score descending:
+
+```
+  0.9333  John Smyth  (index=42)
+  0.8889  Jon Smith   (index=7)
+  0.8500  John Smith  (index=0)
+
+3 match(es) found.
+```
+
+### Example
+
+```bash
+# Find top 3 matches above 0.8
+reclink match \
+  --query "Acme Corporation" \
+  --candidates-file companies.txt \
+  --scorer cosine \
+  --threshold 0.8 \
+  --limit 3
+```
+
+---
+
+## `reclink explain`
+
+Show a per-algorithm score breakdown for a pair of strings. Useful for understanding which metric best fits your data or debugging unexpected match results.
+
+```bash
+reclink explain "John Smith" "Jon Smyth"
+```
+
+### Arguments
+
+<Table
+  columns={["Argument", "Type", "Description"]}
+  rows={[
+    ["`string_a`", "`str`", "First string (positional)."],
+    ["`string_b`", "`str`", "Second string (positional)."],
+  ]}
+/>
+
+### Output
+
+A table of every available algorithm sorted by score, with a visual bar chart:
+
+```
+  Comparing: 'John Smith'  vs  'Jon Smyth'
+
+  jaro_winkler                      0.8322  #########################
+  token_sort_ratio                  0.8000  ########################
+  jaro                              0.7972  #######################
+  smith_waterman_similarity         0.7600  ######################
+  partial_ratio                     0.7500  ######################
+  cosine                            0.5000  ###############
+  levenshtein_similarity            0.7000  #####################
+  ...
+```
+
+### Example
+
+```bash
+# Quick comparison from the command line
+reclink explain "Mueller" "Muller"
+reclink explain "Robert" "Bob"
+```
+
+---
+
+## Pipeline Behavior
+
+The `dedupe` and `link` commands build an internal pipeline with the following steps:
+
+1. **Preprocess** -- `fold_case` and `normalize_whitespace` on the target field
+2. **Block** -- sorted-neighborhood blocking with a window of 5
+3. **Compare** -- string comparison using the specified `--scorer`
+4. **Classify** -- threshold-based classification at the specified `--threshold`
+
+For more control over pipeline configuration (custom blocking strategies, multi-field comparison, Fellegi-Sunter classification, etc.), use the Python API directly. See the [Pipeline](./pipeline) reference.
+
+---
+
+## Exit Codes
+
+<Table
+  columns={["Code", "Meaning"]}
+  rows={[
+    ["`0`", "Success"],
+    ["`1`", "Input error (file not found, missing field, empty file)"],
+    ["`2`", "Argument parsing error"],
+  ]}
+/>
+
+---
+
+## See Also
+
+- **[Pipeline](./pipeline)** -- full Python pipeline API with custom blocking, comparison, and classification
+- **[String Metrics](./string-metrics)** -- all available scorer names for `--scorer`
+- **[Export](./export)** -- programmatic export of results to CSV/JSON
+- **[Quick Start](/docs/getting-started/quickstart)** -- get started with the Python API

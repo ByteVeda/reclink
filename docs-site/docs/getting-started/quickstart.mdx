@@ -1,0 +1,111 @@
+---
+sidebar_position: 2
+title: Quick Start
+description: Get started with reclink in 5 minutes.
+---
+
+# Quick Start
+
+This guide walks you through the most common reclink operations.
+
+## Compare two strings
+
+```python
+from reclink import jaro_winkler, levenshtein, cosine
+
+jaro_winkler("Jon Smith", "John Smyth")   # 0.832
+levenshtein("Jon Smith", "John Smyth")     # 3
+cosine("Jon Smith", "John Smyth")          # 0.5
+```
+
+## Find the best match
+
+```python
+from reclink import match_best, match_batch
+
+# Best single match
+match_best("hello", ["hallo", "world", "help"])
+# ("hallo", 0.933, 0)   -> (string, score, index)
+
+# All matches above a threshold
+match_batch("hello", ["hallo", "world", "help"], threshold=0.5, limit=2)
+# [("hallo", 0.933, 0), ("help", 0.733, 2)]
+```
+
+## Batch comparison
+
+```python
+from reclink import cdist
+
+# All-pairs similarity matrix (parallelized across CPU cores)
+matrix = cdist(["Jon", "Jane"], ["John", "Janet"], scorer="jaro_winkler")
+# array([[0.93, 0.0 ],
+#        [0.0 , 0.93]])
+```
+
+## Phonetic encoding
+
+```python
+from reclink import soundex, double_metaphone
+
+soundex("Smith")          # "S530"
+soundex("Smyth")          # "S530"  -- same code!
+double_metaphone("John")  # ("JN", "AN")
+```
+
+## Preprocessing
+
+```python
+from reclink import clean_name, fold_case, normalize_whitespace
+
+clean_name("  DR. John  Smith Jr.  ")  # "john smith"
+fold_case("HELLO World")               # "hello world"
+normalize_whitespace("  too   many   spaces  ")  # "too many spaces"
+```
+
+## Scoring presets
+
+```python
+from reclink.presets import name_matching
+
+scorer = name_matching()
+scorer.similarity("Jon Smith", "John Smyth")  # 0.89
+scorer.match_best("Jon Smith", ["John Smith", "Jane Doe"])
+# ("John Smith", 0.96, 0)
+```
+
+## Record linkage pipeline
+
+```python
+import pandas as pd
+from reclink.pipeline import ReclinkPipeline
+
+df = pd.DataFrame({
+    "id": ["1", "2", "3"],
+    "first_name": ["Jon", "John", "Jane"],
+    "last_name": ["Smith", "Smyth", "Doe"],
+})
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("first_name", ["fold_case", "strip_punctuation"])
+    .preprocess("last_name", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+
+matches = pipeline.dedup(df)
+print(matches)
+#    left_id right_id     score            scores
+# 0       1        2  0.921...  [0.832..., 1.0...]
+```
+
+## Next steps
+
+- **[Concepts](./concepts)** — Learn about the core building blocks
+- **[API Reference](/docs/api/string-metrics)** — Full function reference
+- **[Guides](/docs/guides/name-matching)** — End-to-end tutorials
+- **[Playground](/docs/playground)** — Try functions interactively in your browser

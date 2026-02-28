@@ -1,0 +1,254 @@
+---
+sidebar_position: 1
+title: Name Matching
+description: End-to-end tutorial for matching person names with reclink, covering preprocessing, metric selection, composite scoring, and pipeline-based matching.
+---
+
+# Name Matching
+
+Person-name matching is one of the most common -- and most deceptively difficult -- fuzzy matching tasks. This guide walks you through building a robust name-matching workflow from scratch.
+
+## Why name matching is hard
+
+Names are messy. Even a single person's name can appear in dozens of different forms across databases:
+
+<Table
+  columns={["Challenge", "Example"]}
+  rows={[
+    [<strong>Typos</strong>, '"Jon Smith" vs. "John Smith"'],
+    [<strong>Spelling variants</strong>, '"Smith" vs. "Smyth"'],
+    [<strong>Nicknames</strong>, '"Bob" vs. "Robert", "Bill" vs. "William"'],
+    [<strong>Transliterations</strong>, '"Mohammed" vs. "Muhammad" vs. "Mohamed"'],
+    [<strong>Diacritics</strong>, '"Muller" vs. "Mueller" vs. "Müller"'],
+    [<strong>Cultural differences</strong>, "Family-name-first ordering, compound surnames"],
+    [<strong>Titles and suffixes</strong>, '"Dr. John Smith Jr." vs. "John Smith"'],
+  ]}
+/>
+
+No single algorithm handles all of these perfectly. The key is to combine the right preprocessing, the right metric, and -- when you have structured data -- the right pipeline configuration.
+
+## Step 1: Choose the right metric
+
+Different metrics excel at different kinds of variation:
+
+```python
+from reclink import jaro_winkler, levenshtein_similarity, phonetic_hybrid, token_sort_ratio
+
+a, b = "Jon Smith", "John Smyth"
+
+jaro_winkler(a, b)          # ~0.83  (good for character-level typos)
+levenshtein_similarity(a, b) # ~0.70  (counts edits -- penalises more)
+token_sort_ratio(a, b)       # ~0.82  (handles word-order differences)
+phonetic_hybrid(a, b)        # ~0.89  (blends sound + spelling)
+```
+
+**Rules of thumb:**
+
+- **Jaro-Winkler** -- Best general choice for names. Rewards matching prefixes (where name typos are rarest) and is extremely fast.
+- **phonetic_hybrid** -- Best when names may _sound_ alike but be spelled very differently ("Smith" / "Smyth", "Mueller" / "Muller").
+- **token_sort_ratio** -- Best when word order varies ("Smith, John" vs. "John Smith").
+- **Levenshtein** -- Best when you need an intuitive edit-distance count, but the normalized similarity is harsher on short strings.
+
+:::tip Use `explain` to explore
+Not sure which metric fits your data? Use `explain` to score a pair across every algorithm at once:
+
+```python
+from reclink import explain
+
+explain("Mohammed", "Muhammad")
+# {"jaro_winkler": 0.75, "soundex_match": True, "phonetic_hybrid": 0.88, ...}
+```
+:::
+
+## Step 2: Preprocess names
+
+Raw name data contains noise -- titles, punctuation, inconsistent casing, and diacritics -- that hurts matching accuracy. Clean it before comparing.
+
+```python
+from reclink import clean_name, fold_case, strip_diacritics, normalize_whitespace
+
+# clean_name strips titles, suffixes, punctuation, normalises whitespace and lowercases
+clean_name("  DR. John  Smith Jr.  ")   # "john smith"
+
+# Individual operations when you need finer control
+fold_case("HELLO World")                # "hello world"
+strip_diacritics("M\u00fcller")              # "Muller"
+normalize_whitespace("  too   many  ")  # "too many"
+```
+
+For names with non-Latin characters, strip diacritics and transliterate first:
+
+```python
+from reclink import strip_diacritics, transliterate_cyrillic
+
+strip_diacritics("M\u00fcller")              # "Muller"
+transliterate_cyrillic("\u0418\u0432\u0430\u043d\u043e\u0432")        # "Ivanov"
+```
+
+## Step 3: Simple matching with `match_best` and `match_batch`
+
+For ad-hoc lookups -- "find the closest name in this list" -- you don't need a full pipeline.
+
+### Find the single best match
+
+```python
+from reclink import match_best
+
+match_best(
+    "Jon Smith",
+    ["John Smith", "Jane Doe", "John Smyth", "Bob Jones"],
+    scorer="jaro_winkler",
+    threshold=0.8,
+)
+# ("John Smith", 0.96, 0)   -> (matched_string, score, index)
+```
+
+### Find all matches above a threshold
+
+```python
+from reclink import match_batch
+
+match_batch(
+    "Jon Smith",
+    ["John Smith", "Jane Doe", "John Smyth", "Bob Jones"],
+    scorer="jaro_winkler",
+    threshold=0.8,
+    limit=5,
+)
+# [("John Smith", 0.96, 0), ("John Smyth", 0.83, 2)]
+```
+
+Both functions accept any scorer name (`"jaro_winkler"`, `"levenshtein"`, `"cosine"`, etc.) and are parallelised across CPU cores via Rayon.
+
+## Step 4: Composite scoring with presets
+
+A single metric captures one kind of variation. A **CompositeScorer** blends multiple metrics for more robust matching.
+
+```python
+from reclink import CompositeScorer
+
+scorer = CompositeScorer([
+    ("jaro_winkler", 0.5),      # 50% weight on character-level similarity
+    ("token_sort", 0.3),        # 30% weight on word-order-invariant matching
+    ("phonetic_hybrid", 0.2),   # 20% weight on phonetic similarity
+])
+
+scorer.similarity("Jon Smith", "John Smyth")  # ~0.87
+```
+
+reclink ships a pre-tuned `name_matching` preset with exactly these weights:
+
+```python
+from reclink.presets import name_matching
+
+scorer = name_matching()
+scorer.similarity("Jon Smith", "John Smyth")        # ~0.87
+scorer.similarity("Mohammed Ali", "Muhammad Ali")    # ~0.91
+scorer.similarity("M\u00fcller", "Mueller")               # ~0.93
+
+# Use match_best / match_batch on the scorer directly
+scorer.match_best("Jon Smith", ["John Smith", "Jane Doe"])
+# ("John Smith", 0.96, 0)
+```
+
+## Step 5: Pipeline-based matching for structured data
+
+When names live in a database or DataFrame alongside other fields, use the record linkage pipeline for maximum accuracy and speed.
+
+```python
+import pandas as pd
+from reclink.pipeline import ReclinkPipeline
+
+# Sample data with duplicate entries
+df = pd.DataFrame({
+    "id":         ["1",    "2",      "3",      "4",       "5"],
+    "first_name": ["Jon",  "John",   "Jane",   "Mohammed","Muhammad"],
+    "last_name":  ["Smith","Smyth",  "Doe",    "Ali",     "Ali"],
+    "dob":        ["1990", "1990",   "1985",   "1978",    "1978"],
+})
+
+pipeline = (
+    ReclinkPipeline.builder()
+    # Preprocessing: clean before comparing
+    .preprocess("first_name", ["fold_case", "strip_punctuation"])
+    .preprocess("last_name", ["fold_case", "strip_diacritics"])
+    # Blocking: only compare records whose last name sounds the same
+    .block_phonetic("last_name", algorithm="soundex")
+    # Comparison: score each field independently
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .compare_exact("dob")
+    # Classification: weighted average must exceed 0.80
+    .classify_weighted([0.4, 0.4, 0.2], threshold=0.80)
+    .build()
+)
+
+matches = pipeline.dedup(df)
+print(matches)
+#    left_id right_id     score match_class           scores
+# 0        1        2  0.921..       match  [0.83, 1.0, 1.0]
+# 1        4        5  0.912..       match  [0.75, 1.0, 1.0]
+```
+
+### Key decisions in the pipeline
+
+1. **Preprocessing** -- `fold_case` and `strip_diacritics` ensure "M\u00fcller" and "mueller" are compared on equal footing.
+2. **Blocking** -- Phonetic blocking on last name reduces O(n^2) comparisons to O(n). Without it, 100,000 records would require 5 billion comparisons.
+3. **Multiple comparators** -- Scoring first name, last name, and date of birth separately gives the classifier more signal.
+4. **Weighted classification** -- Name fields get 80% of the weight; DOB acts as a tiebreaker.
+
+## Step 6: Debug matches with `explain`
+
+When a match looks wrong, `explain` shows every algorithm's score side by side:
+
+```python
+from reclink import explain
+
+result = explain("Mohammed", "Muhammad")
+print(result)
+# {
+#     "levenshtein": 4,
+#     "levenshtein_similarity": 0.50,
+#     "jaro_winkler": 0.75,
+#     "cosine": 0.44,
+#     "soundex_match": True,
+#     "phonetic_hybrid": 0.88,
+#     ...
+# }
+```
+
+You can also narrow it to specific algorithms:
+
+```python
+explain("M\u00fcller", "Mueller", algorithms=["jaro_winkler", "phonetic_hybrid"])
+# {"jaro_winkler": 0.96, "phonetic_hybrid": 0.97}
+```
+
+And for character-level insight, use `levenshtein_align`:
+
+```python
+from reclink import levenshtein_align
+
+levenshtein_align("Jon", "John")
+# {
+#     "visual": "Jon-\nJohn",
+#     "distance": 1,
+#     "ops": [{"op": "insert", "char": "h", "pos": 2}]
+# }
+```
+
+## Tips and best practices
+
+- **Preprocess first, always.** Even `fold_case` alone can significantly improve scores.
+- **Use phonetic blocking in pipelines.** Soundex blocking on last name is the highest-leverage optimization for person-name dedup.
+- **Combine metrics.** No single metric handles all name variations. The `name_matching` preset is a strong default.
+- **Threshold tuning matters.** Start at 0.85 and lower the threshold if you need higher recall, or raise it if you need higher precision. Use the [evaluation API](/docs/api/evaluation) to measure.
+- **Handle transliterations explicitly.** For multilingual datasets, preprocess with `transliterate_cyrillic`, `transliterate_arabic`, etc. before matching. See the [Multilingual Guide](./multilingual) for details.
+
+## Next steps
+
+- **[Dataset Deduplication](./deduplication)** -- Full pipeline walkthrough for deduplicating a dataset
+- **[Multilingual Support](./multilingual)** -- Handling non-Latin scripts and transliteration
+- **[Performance Optimization](./performance)** -- Scaling name matching to millions of records
+- **[String Metrics API](/docs/api/string-metrics)** -- Complete metric reference
+- **[Pipeline API](/docs/api/pipeline)** -- All pipeline builder methods

@@ -1,0 +1,428 @@
+---
+sidebar_position: 4
+title: Multilingual Support
+description: Guide to fuzzy matching across scripts and languages, covering CJK, Cyrillic, Greek, Arabic, Hebrew, Devanagari, Korean, and Unicode normalization in reclink.
+---
+
+# Multilingual Support
+
+Real-world datasets contain names and text in many scripts. A Russian name might be stored as "\u0418\u0432\u0430\u043d\u043e\u0432" in one system and "Ivanov" in another. An Arabic name could appear with or without diacritics. CJK text requires different tokenization strategies entirely.
+
+This guide covers reclink's tools for handling every major script family.
+
+## Unicode normalization
+
+Before doing anything else, normalise your strings. The same visual character can have multiple Unicode representations:
+
+```python
+from reclink import normalize_unicode
+
+# NFC: Canonical Decomposition, then Canonical Composition (recommended default)
+normalize_unicode("caf\u00e9", form="nfc")    # "caf\u00e9" (single codepoint \u00e9)
+
+# NFD: Canonical Decomposition
+normalize_unicode("caf\u00e9", form="nfd")    # "cafe\u0301" (e + combining acute accent)
+
+# NFKC: Compatibility Decomposition, then Canonical Composition
+normalize_unicode("\ufb01", form="nfkc")   # "fi" (ligature decomposed)
+
+# NFKD: Compatibility Decomposition
+normalize_unicode("\ufb01", form="nfkd")   # "fi"
+```
+
+**When to use which form:**
+
+<Table
+  columns={["Form", "Use case"]}
+  rows={[
+    [<strong>NFC</strong>, "Default for most matching. Composes characters into single codepoints where possible."],
+    [<strong>NFKC</strong>, "Best for search and indexing. Decomposes compatibility characters (ligatures, width variants, superscripts)."],
+    [<strong>NFD</strong>, "Useful when you need to strip combining marks (diacritics) after decomposition."],
+    [<strong>NFKD</strong>, "Maximum decomposition for aggressive normalization."],
+  ]}
+/>
+
+:::tip Always normalize before comparing
+Two strings that look identical on screen can fail an exact comparison if they use different Unicode representations. NFKC is the safest default for fuzzy matching.
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("name", ["normalize_unicode_nfkc", "fold_case"])
+    # ...
+)
+```
+:::
+
+## Language detection
+
+When working with multilingual data, you may need to detect the script or language before choosing the right processing strategy:
+
+```python
+from reclink import detect_language
+
+detect_language("\u041f\u0440\u0438\u0432\u0435\u0442")         # "Russian"
+detect_language("\u4f60\u597d")             # "Chinese"
+detect_language("\u3053\u3093\u306b\u3061\u306f")         # "Japanese"
+detect_language("\uc548\ub155\ud558\uc138\uc694")         # "Korean"
+detect_language("\u0645\u0631\u062d\u0628\u0627")           # "Arabic"
+detect_language("\u03b3\u03b5\u03b9\u03b1")           # "Greek"
+detect_language("Hello")           # "Latin"
+detect_language("\u0928\u092e\u0938\u094d\u0924\u0947")         # "Devanagari"
+```
+
+## CJK text (Chinese, Japanese, Korean)
+
+CJK text does not use spaces between words, so standard whitespace tokenization produces a single giant token. reclink provides specialized tokenizers.
+
+### Smart tokenize
+
+`smart_tokenize` detects the script and applies the appropriate strategy automatically:
+
+```python
+from reclink import smart_tokenize
+
+# CJK: character-level tokenization
+smart_tokenize("\u6771\u4eac\u90fd")         # ["\u6771", "\u4eac", "\u90fd"]
+
+# Latin: whitespace tokenization
+smart_tokenize("New York")      # ["New", "York"]
+
+# Mixed: handles both
+smart_tokenize("Tokyo \u6771\u4eac")   # ["Tokyo", "\u6771", "\u4eac"]
+```
+
+### CJK n-gram tokenization
+
+For character-level n-grams (useful for substring matching in CJK text):
+
+```python
+from reclink import cjk_ngram_tokenize
+
+cjk_ngram_tokenize("\u6771\u4eac\u90fd", n=2)   # ["\u6771\u4eac", "\u4eac\u90fd"]
+cjk_ngram_tokenize("\u6771\u4eac\u90fd", n=1)   # ["\u6771", "\u4eac", "\u90fd"]
+```
+
+### Character tokenization
+
+Splits every character into its own token:
+
+```python
+from reclink import character_tokenize
+
+character_tokenize("\u6771\u4eac\u90fd")   # ["\u6771", "\u4eac", "\u90fd"]
+character_tokenize("\u3053\u3093\u306b\u3061\u306f") # ["\u3053", "\u3093", "\u306b", "\u3061", "\u306f"]
+```
+
+### Matching CJK text
+
+Use `smart_tokenize_ngram` combined with n-gram similarity for effective CJK matching:
+
+```python
+from reclink import cosine, jaccard, ngram_similarity
+
+# Character-level similarity works well for CJK
+cosine("\u6771\u4eac\u90fd", "\u6771\u4eac\u5e02", n=1)        # shared "\u6771\u4eac" characters
+ngram_similarity("\u6771\u4eac\u90fd", "\u6771\u4eac\u5e02", n=1)  # character overlap
+```
+
+### Batch operations
+
+All tokenizers have batch variants for processing lists efficiently:
+
+```python
+from reclink import (
+    smart_tokenize_batch,
+    cjk_ngram_tokenize_batch,
+    character_tokenize_batch,
+)
+
+texts = ["\u6771\u4eac\u90fd", "\u5927\u962a\u5e9c", "\u4eac\u90fd\u5e02"]
+
+smart_tokenize_batch(texts)
+# [["\u6771", "\u4eac", "\u90fd"], ["\u5927", "\u962a", "\u5e9c"], ["\u4eac", "\u90fd", "\u5e02"]]
+
+cjk_ngram_tokenize_batch(texts, n=2)
+# [["\u6771\u4eac", "\u4eac\u90fd"], ["\u5927\u962a", "\u962a\u5e9c"], ["\u4eac\u90fd", "\u90fd\u5e02"]]
+```
+
+## Cyrillic (Russian, Ukrainian, etc.)
+
+`transliterate_cyrillic` converts Cyrillic script to Latin equivalents:
+
+```python
+from reclink import transliterate_cyrillic, jaro_winkler
+
+transliterate_cyrillic("\u0418\u0432\u0430\u043d\u043e\u0432")       # "Ivanov"
+transliterate_cyrillic("\u0414\u043c\u0438\u0442\u0440\u0438\u0439")     # "Dmitrij"
+transliterate_cyrillic("\u0427\u0435\u0445\u043e\u0432")       # "Chekhov"
+transliterate_cyrillic("\u0421\u0435\u0440\u0433\u0435\u0439 \u0418\u0432\u0430\u043d\u043e\u0432")  # "Sergej Ivanov"
+
+# Now compare transliterated names with Latin equivalents
+jaro_winkler(
+    transliterate_cyrillic("\u0418\u0432\u0430\u043d\u043e\u0432"),
+    "Ivanov"
+)  # 1.0
+```
+
+### Matching Russian names against English records
+
+```python
+from reclink import transliterate_cyrillic, match_best, fold_case
+
+russian_names = ["\u0418\u0432\u0430\u043d\u043e\u0432", "\u041f\u0435\u0442\u0440\u043e\u0432", "\u0421\u0438\u0434\u043e\u0440\u043e\u0432"]
+english_records = ["Ivanov", "Petrov", "Sidorov", "Smirnov"]
+
+# Transliterate, then match
+for name in russian_names:
+    latin = fold_case(transliterate_cyrillic(name))
+    result = match_best(latin, english_records, scorer="jaro_winkler")
+    print(f"{name} -> {latin} -> {result}")
+# \u0418\u0432\u0430\u043d\u043e\u0432 -> ivanov -> ("Ivanov", 1.0, 0)
+# \u041f\u0435\u0442\u0440\u043e\u0432 -> petrov -> ("Petrov", 1.0, 1)
+# \u0421\u0438\u0434\u043e\u0440\u043e\u0432 -> sidorov -> ("Sidorov", 1.0, 2)
+```
+
+## Greek
+
+```python
+from reclink import transliterate_greek, jaro_winkler
+
+transliterate_greek("\u039a\u03c9\u03bd\u03c3\u03c4\u03b1\u03bd\u03c4\u03af\u03bd\u03bf\u03c2")  # "Konstantinos"
+transliterate_greek("\u0394\u03b7\u03bc\u03ae\u03c4\u03c1\u03b9\u03bf\u03c2")    # "Dimitrios"
+transliterate_greek("\u0393\u03b5\u03ce\u03c1\u03b3\u03b9\u03bf\u03c2")    # "Georgios"
+
+# Compare transliterated Greek with English equivalents
+jaro_winkler(
+    transliterate_greek("\u0394\u03b7\u03bc\u03ae\u03c4\u03c1\u03b9\u03bf\u03c2"),
+    "Demetrios"
+)  # high score -- slight transliteration difference
+```
+
+## Arabic
+
+Arabic text presents several challenges: optional diacritics (tashkeel), letter variants (e.g., different forms of alef), and bidirectional marks.
+
+### Normalize Arabic text
+
+```python
+from reclink import normalize_arabic
+
+# Normalizes alef variants, removes tatweel, standardizes hamza
+normalize_arabic("\u0625\u0628\u0631\u0627\u0647\u064a\u0645")  # normalised form
+normalize_arabic("\u0623\u062d\u0645\u062f")     # normalised form
+```
+
+### Strip diacritics (tashkeel)
+
+```python
+from reclink import strip_arabic_diacritics
+
+# Remove fatha, damma, kasra, shadda, sukun, etc.
+strip_arabic_diacritics("\u0645\u064f\u062d\u064e\u0645\u0651\u064e\u062f\u064c")  # "\u0645\u062d\u0645\u062f"
+```
+
+### Transliterate to Latin script
+
+```python
+from reclink import transliterate_arabic, jaro_winkler
+
+transliterate_arabic("\u0645\u062d\u0645\u062f")       # "mhmd" or similar romanization
+transliterate_arabic("\u0639\u0628\u062f \u0627\u0644\u0644\u0647")  # "abd allh"
+transliterate_arabic("\u0625\u0628\u0631\u0627\u0647\u064a\u0645")  # "ibrahym"
+
+# Compare with English transliterations
+jaro_winkler(transliterate_arabic("\u0645\u062d\u0645\u062f"), "Muhammad")
+```
+
+### Strip bidirectional marks
+
+Unicode bidirectional control characters can silently break string comparisons:
+
+```python
+from reclink import strip_bidi_marks
+
+# Remove LRM, RLM, LRE, RLE, PDF, LRO, RLO, etc.
+cleaned = strip_bidi_marks("\u200f\u0645\u062d\u0645\u062f\u200f")  # "\u0645\u062d\u0645\u062f"
+```
+
+### Complete Arabic matching pipeline
+
+```python
+from reclink import (
+    normalize_arabic,
+    strip_arabic_diacritics,
+    strip_bidi_marks,
+    transliterate_arabic,
+    jaro_winkler,
+)
+
+def prepare_arabic(name: str) -> str:
+    """Full Arabic preprocessing pipeline."""
+    name = strip_bidi_marks(name)
+    name = strip_arabic_diacritics(name)
+    name = normalize_arabic(name)
+    return name
+
+# Compare two Arabic names
+a = prepare_arabic("\u0645\u064f\u062d\u064e\u0645\u0651\u064e\u062f\u064c")
+b = prepare_arabic("\u0645\u062d\u0645\u062f")
+jaro_winkler(a, b)  # 1.0 -- identical after diacritic removal
+
+# Cross-script comparison
+jaro_winkler(transliterate_arabic(a), "Muhammad")
+```
+
+## Hebrew
+
+```python
+from reclink import strip_hebrew_diacritics, transliterate_hebrew
+
+# Strip niqqud (vowel points)
+strip_hebrew_diacritics("\u05d3\u05b8\u05bc\u05e0\u05b4\u05d9\u05bc\u05b5\u05d0\u05dc")  # "\u05d3\u05e0\u05d9\u05d0\u05dc"
+
+# Transliterate to Latin
+transliterate_hebrew("\u05d3\u05e0\u05d9\u05d0\u05dc")     # "danial" or similar
+transliterate_hebrew("\u05d9\u05e2\u05e7\u05d1")      # "yaaqb"
+transliterate_hebrew("\u05d9\u05e8\u05d5\u05e9\u05dc\u05d9\u05dd")  # "yrushlym"
+```
+
+## Devanagari (Hindi, Sanskrit, etc.)
+
+```python
+from reclink import transliterate_devanagari, jaro_winkler
+
+transliterate_devanagari("\u0930\u093e\u091c\u0947\u0936")      # "raajesh"
+transliterate_devanagari("\u092e\u0941\u0902\u092c\u0908")       # "mumbai"
+transliterate_devanagari("\u0928\u0930\u0947\u0928\u094d\u0926\u094d\u0930")    # "narendra"
+
+# Compare transliterated Hindi with English
+jaro_winkler(
+    transliterate_devanagari("\u0930\u093e\u091c\u0947\u0936"),
+    "Rajesh"
+)  # high similarity
+```
+
+## Korean (Hangul)
+
+```python
+from reclink import transliterate_hangul, jaro_winkler
+
+transliterate_hangul("\uae40\ucca0\uc218")     # "gimcheolsu" or similar
+transliterate_hangul("\ubc15\uc9c0\uc601")     # "bakjiyeong"
+transliterate_hangul("\uc11c\uc6b8")        # "seoul"
+
+# Cross-script matching
+jaro_winkler(transliterate_hangul("\uc11c\uc6b8"), "Seoul")
+```
+
+## Beider-Morse phonetic encoding
+
+For multilingual name matching, the Beider-Morse algorithm is specifically designed to handle names from multiple language origins. It produces phonetic codes that account for pronunciation rules across languages:
+
+```python
+from reclink import beider_morse
+
+# Handles names from multiple language traditions
+beider_morse("Schwartz")      # German/Yiddish pronunciation
+beider_morse("Schwarz")       # same phonetic neighborhood
+beider_morse("Ivanov")        # Russian-origin name
+beider_morse("Cohen")         # Hebrew-origin name
+
+# Ashkenazi mode for Eastern European Jewish names
+beider_morse("Goldstein", ashkenazi=True)
+beider_morse("Goldsztejn", ashkenazi=True)  # Polish spelling, same sound
+```
+
+Beider-Morse works particularly well for:
+- Names with multiple possible language origins
+- Immigration records where names were transliterated by ear
+- Historical genealogy data spanning multiple countries
+
+## Putting it all together: multilingual pipeline
+
+Here is a pipeline that handles mixed-script data:
+
+```python
+import pandas as pd
+from reclink import (
+    register_preprocessor,
+    detect_language,
+    transliterate_cyrillic,
+    transliterate_arabic,
+    transliterate_greek,
+    transliterate_devanagari,
+    transliterate_hangul,
+    strip_bidi_marks,
+    normalize_arabic,
+    strip_arabic_diacritics,
+    strip_diacritics,
+    normalize_unicode,
+    fold_case,
+)
+from reclink.pipeline import ReclinkPipeline
+
+def multilingual_normalize(s: str) -> str:
+    """Normalize any script to comparable Latin text."""
+    s = strip_bidi_marks(s)
+    s = normalize_unicode(s, form="nfkc")
+
+    lang = detect_language(s)
+
+    if lang == "Russian":
+        s = transliterate_cyrillic(s)
+    elif lang == "Arabic":
+        s = strip_arabic_diacritics(s)
+        s = normalize_arabic(s)
+        s = transliterate_arabic(s)
+    elif lang == "Greek":
+        s = transliterate_greek(s)
+    elif lang == "Devanagari":
+        s = transliterate_devanagari(s)
+    elif lang == "Korean":
+        s = transliterate_hangul(s)
+
+    s = strip_diacritics(s)
+    s = fold_case(s)
+    return s
+
+register_preprocessor("multilingual", multilingual_normalize)
+
+# Now use in a pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("name", ["custom:multilingual"])
+    .block_phonetic("name", algorithm="double_metaphone")
+    .compare_string("name", metric="jaro_winkler")
+    .classify_threshold(0.80)
+    .build()
+)
+
+# This pipeline can match across scripts:
+df = pd.DataFrame({
+    "id":   ["1",       "2",      "3",       "4"],
+    "name": ["\u0418\u0432\u0430\u043d\u043e\u0432", "Ivanov", "\u0645\u062d\u0645\u062f", "Muhammad"],
+})
+
+matches = pipeline.dedup(df)
+# Should find: \u0418\u0432\u0430\u043d\u043e\u0432 == Ivanov, \u0645\u062d\u0645\u062f == Muhammad
+```
+
+## Tips and best practices
+
+- **Always apply Unicode normalization first.** NFKC is the safest default. Without it, visually identical strings can silently fail to match.
+- **Strip diacritics and bidirectional marks early.** These invisible characters are the most common source of "why doesn't this match?" bugs.
+- **Use `detect_language` to route preprocessing.** Rather than applying all transliterators blindly, detect the script and apply only the relevant one.
+- **Beider-Morse is your best phonetic algorithm for multilingual names.** Soundex and Metaphone are English-centric. Beider-Morse was designed for cross-language name matching.
+- **CJK text needs character-level or n-gram tokenization.** Whitespace tokenization produces a single token for an entire CJK sentence.
+- **Test with real data from each script.** Transliteration is lossy -- always validate that your pipeline produces reasonable matches on a sample of real names.
+
+## Next steps
+
+- **[Name Matching](./name-matching)** -- End-to-end name matching strategies
+- **[Custom Plugins](./custom-plugins)** -- Build custom preprocessors for unsupported scripts
+- **[Performance Optimization](./performance)** -- Scaling multilingual matching
+- **[Preprocessing API](/docs/api/preprocessing)** -- Full reference for all preprocessing and transliteration functions
+- **[Phonetic API](/docs/api/phonetic)** -- Beider-Morse and other phonetic algorithms

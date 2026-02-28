@@ -1,0 +1,433 @@
+---
+sidebar_position: 4
+title: Batch Operations
+description: Reference for batch comparison, matching, and scoring functions in reclink.
+---
+
+# Batch Operations
+
+reclink provides high-performance batch functions for comparing, matching, and scoring large collections of strings. All batch operations are parallelized with Rayon and return NumPy arrays or Python lists for seamless integration with data workflows.
+
+```python
+from reclink import cdist, match_best, match_batch, pairwise_similarity
+```
+
+---
+
+## Cross-Distance Matrix
+
+### `cdist(sources, targets, scorer="jaro_winkler")`
+
+Computes an all-pairs similarity matrix between two lists of strings. The result is a 2D NumPy array of shape `(len(sources), len(targets))`.
+
+Parallelized across all available CPU cores.
+
+```python
+from reclink import cdist
+
+sources = ["Jon", "Jane", "Bob"]
+targets = ["John", "Janet", "Robert"]
+
+matrix = cdist(sources, targets, scorer="jaro_winkler")
+# array([[0.933, 0.0  , 0.0  ],
+#        [0.0  , 0.933, 0.0  ],
+#        [0.0  , 0.0  , 0.583]])
+
+matrix.shape  # (3, 3)
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`sources`", "`list[str]`", <em>required</em>, "Row strings"],
+    ["`targets`", "`list[str]`", <em>required</em>, "Column strings"],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name. See supported scorers."],
+  ]}
+/>
+
+### Returns
+
+`numpy.ndarray` of shape `(len(sources), len(targets))` with dtype `float64`. Each cell `[i, j]` contains the similarity between `sources[i]` and `targets[j]`.
+
+---
+
+## Single Best Match
+
+### `match_best(query, candidates, scorer="jaro_winkler", threshold=0.0)`
+
+Finds the single best matching candidate for a query string. Returns the match with the highest score, or `None` if no candidate meets the threshold.
+
+```python
+from reclink import match_best
+
+match_best("hello", ["hallo", "world", "help"])
+# ("hallo", 0.9333333333333333, 0)
+
+match_best("hello", ["world", "xyz"], threshold=0.8)
+# None
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", <em>required</em>, "The string to search for"],
+    ["`candidates`", "`list[str]`", <em>required</em>, "List of candidate strings to search against"],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name"],
+    ["`threshold`", "`float`", "`0.0`", "Minimum similarity score. Candidates below this are ignored."],
+  ]}
+/>
+
+### Returns
+
+`tuple[str, float, int]` -- `(matched_string, score, index)`, or `None` if no candidate meets the threshold.
+
+---
+
+## Batch Matching
+
+### `match_batch(query, candidates, scorer="jaro_winkler", threshold=0.0, limit=None)`
+
+Finds all candidates that match a query above a threshold, sorted by score descending. Optionally limits the number of results.
+
+```python
+from reclink import match_batch
+
+results = match_batch("hello", ["hallo", "world", "help", "held"], threshold=0.5, limit=3)
+# [
+#     ("hallo", 0.933, 0),
+#     ("help",  0.733, 2),
+#     ("held",  0.733, 3),
+# ]
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", <em>required</em>, "The string to search for"],
+    ["`candidates`", "`list[str]`", <em>required</em>, "List of candidate strings"],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name"],
+    ["`threshold`", "`float`", "`0.0`", "Minimum similarity score"],
+    ["`limit`", "`int` or `None`", "`None`", "Maximum number of results to return. `None` returns all matches."],
+  ]}
+/>
+
+### Returns
+
+`list[tuple[str, float, int]]` -- list of `(matched_string, score, index)` tuples, sorted by score descending.
+
+---
+
+## Pairwise Similarity
+
+### `pairwise_similarity(list_a, list_b, scorer="jaro_winkler")`
+
+Computes element-wise similarity between two lists of the same length. Unlike `cdist`, this does **not** compute all pairs -- it compares `list_a[i]` with `list_b[i]` for each index `i`.
+
+```python
+from reclink import pairwise_similarity
+
+scores = pairwise_similarity(
+    ["Jon", "Jane", "Bob"],
+    ["John", "Janet", "Robert"],
+    scorer="jaro_winkler",
+)
+# array([0.933, 0.933, 0.583])
+
+scores.shape  # (3,)
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`list_a`", "`list[str]`", <em>required</em>, "First list of strings"],
+    ["`list_b`", "`list[str]`", <em>required</em>, "Second list of strings (must be same length as `list_a`)"],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name"],
+  ]}
+/>
+
+### Returns
+
+`numpy.ndarray` of shape `(len(list_a),)` with dtype `float64`.
+
+---
+
+## Arrow Variants
+
+Arrow variants accept and return Apache Arrow arrays instead of Python lists, enabling zero-copy interop with Polars, DuckDB, and other Arrow-native libraries. They avoid Python object overhead entirely.
+
+### `cdist_arrow(sources, targets, scorer="jaro_winkler")`
+
+Same semantics as `cdist` but with Arrow array inputs.
+
+```python
+import pyarrow as pa
+from reclink import cdist_arrow
+
+sources = pa.array(["Jon", "Jane"])
+targets = pa.array(["John", "Janet"])
+
+matrix = cdist_arrow(sources, targets, scorer="jaro_winkler")
+```
+
+### `match_best_arrow(query, candidates, scorer="jaro_winkler", threshold=0.0)`
+
+Arrow variant of `match_best`.
+
+```python
+import pyarrow as pa
+from reclink import match_best_arrow
+
+candidates = pa.array(["hallo", "world", "help"])
+match_best_arrow("hello", candidates)
+```
+
+### `match_batch_arrow(query, candidates, scorer="jaro_winkler", threshold=0.0, limit=None)`
+
+Arrow variant of `match_batch`.
+
+```python
+import pyarrow as pa
+from reclink import match_batch_arrow
+
+candidates = pa.array(["hallo", "world", "help", "held"])
+match_batch_arrow("hello", candidates, threshold=0.5)
+```
+
+### `phonetic_batch_arrow(strings, algorithm="soundex")`
+
+Encodes an entire Arrow array of strings with a phonetic algorithm. Ideal for column-level encoding in Polars or DuckDB pipelines.
+
+```python
+import pyarrow as pa
+from reclink import phonetic_batch_arrow
+
+names = pa.array(["Smith", "Smyth", "Johnson", "Jonson"])
+codes = phonetic_batch_arrow(names, algorithm="soundex")
+# pa.array(["S530", "S530", "J525", "J525"])
+```
+
+### Arrow Parameters
+
+<Table
+  columns={["Parameter", "Type", "Description"]}
+  rows={[
+    ["`sources` / `strings`", "`pyarrow.Array`", "Arrow string array"],
+    ["`targets` / `candidates`", "`pyarrow.Array`", "Arrow string array"],
+    ["`scorer`", "`str`", "Similarity metric name"],
+    ["`algorithm`", "`str`", "Phonetic algorithm name (`phonetic_batch_arrow` only)"],
+  ]}
+/>
+
+---
+
+## CompositeScorer
+
+`CompositeScorer` combines multiple similarity metrics with configurable weights into a single scorer. This produces more robust matching by blending the strengths of different algorithms.
+
+### Construction
+
+```python
+from reclink import CompositeScorer
+
+scorer = CompositeScorer([
+    ("jaro_winkler", 0.6),
+    ("token_sort_ratio", 0.4),
+])
+```
+
+The weights do not need to sum to 1.0 -- they are automatically normalized.
+
+### `CompositeScorer.similarity(a, b)`
+
+Compute the weighted similarity between two strings.
+
+```python
+scorer.similarity("Jon Smith", "John Smyth")  # 0.89 (weighted blend)
+```
+
+### `CompositeScorer.match_best(query, candidates, threshold=0.0)`
+
+Find the best match using the composite score.
+
+```python
+scorer.match_best("Jon Smith", ["John Smith", "Jane Doe", "Jon Smyth"])
+# ("John Smith", 0.96, 0)
+```
+
+### `CompositeScorer.match_batch(query, candidates, threshold=0.0, limit=None)`
+
+Find all matches above a threshold using the composite score.
+
+```python
+results = scorer.match_batch(
+    "Jon Smith",
+    ["John Smith", "Jane Doe", "Jon Smyth"],
+    threshold=0.7,
+)
+# [("John Smith", 0.96, 0), ("Jon Smyth", 0.91, 2)]
+```
+
+### Presets
+
+Pre-tuned `CompositeScorer` configurations for common use cases.
+
+```python
+from reclink import CompositeScorer
+
+# Name matching: weighted blend of jaro_winkler + token_sort + phonetic
+name_scorer = CompositeScorer.preset("name_matching")
+name_scorer.similarity("Jon Smith", "John Smyth")
+
+# Address matching: emphasizes token-based metrics
+address_scorer = CompositeScorer.preset("address_matching")
+address_scorer.similarity("123 Main St", "123 Main Street")
+
+# Company matching: handles legal suffixes, abbreviations
+company_scorer = CompositeScorer.preset("company_matching")
+company_scorer.similarity("Acme Inc", "ACME Corporation")
+
+# General purpose
+general_scorer = CompositeScorer.preset("general")
+```
+
+Available presets: `"name_matching"`, `"address_matching"`, `"company_matching"`, `"general"`.
+
+### CompositeScorer Parameters
+
+<Table
+  columns={["Method", "Parameters", "Return"]}
+  rows={[
+    ["`__init__(metrics)`", "`metrics: list[tuple[str, float]]`", "`CompositeScorer`"],
+    ["`preset(name)`", "`name: str`", "`CompositeScorer`"],
+    ["`similarity(a, b)`", "`a: str`, `b: str`", "`float`"],
+    ["`match_best(query, candidates, threshold)`", "`query: str`, `candidates: list[str]`, `threshold: float = 0.0`", "`tuple[str, float, int]` or `None`"],
+    ["`match_batch(query, candidates, threshold, limit)`", "`query: str`, `candidates: list[str]`, `threshold: float = 0.0`, `limit: int | None = None`", "`list[tuple[str, float, int]]`"],
+  ]}
+/>
+
+---
+
+## TfIdfMatcher
+
+`TfIdfMatcher` builds a TF-IDF index over a corpus of strings for fast approximate matching. Best suited for finding matches in large static datasets where you can amortize the cost of building the index.
+
+### `TfIdfMatcher.fit(corpus)`
+
+Build the TF-IDF index from a list of strings.
+
+```python
+from reclink import TfIdfMatcher
+
+matcher = TfIdfMatcher()
+matcher.fit(["John Smith", "Jane Doe", "Bob Johnson", "Robert Smith"])
+```
+
+### `TfIdfMatcher.similarity(a, b)`
+
+Compute TF-IDF cosine similarity between two strings using the fitted vocabulary.
+
+```python
+matcher.similarity("Jon Smith", "John Smith")  # 0.85
+```
+
+### `TfIdfMatcher.match_batch(query, threshold=0.0, limit=None)`
+
+Find matches from the fitted corpus. This is faster than linear scanning because TF-IDF pruning skips candidates with no shared tokens.
+
+```python
+results = matcher.match_batch("Jon Smith", threshold=0.5, limit=3)
+# [("John Smith", 0.85, 0), ("Robert Smith", 0.62, 3)]
+```
+
+### TfIdfMatcher Parameters
+
+<Table
+  columns={["Method", "Parameters", "Return"]}
+  rows={[
+    ["`fit(corpus)`", "`corpus: list[str]`", "`None` (mutates in place)"],
+    ["`similarity(a, b)`", "`a: str`, `b: str`", "`float`"],
+    ["`match_batch(query, threshold, limit)`", "`query: str`, `threshold: float = 0.0`, `limit: int | None = None`", "`list[tuple[str, float, int]]`"],
+  ]}
+/>
+
+### Example: TF-IDF deduplication
+
+```python
+from reclink import TfIdfMatcher
+
+names = [
+    "John Smith",
+    "Jon Smith",
+    "Jane Doe",
+    "JOHN SMITH",
+    "Janet Doe",
+]
+
+matcher = TfIdfMatcher()
+matcher.fit(names)
+
+for i, name in enumerate(names):
+    matches = matcher.match_batch(name, threshold=0.7)
+    # Filter self-matches
+    matches = [(m, s, j) for m, s, j in matches if j != i]
+    if matches:
+        print(f"{name!r} -> {matches}")
+# 'John Smith' -> [('Jon Smith', 0.85, 1), ('JOHN SMITH', 0.95, 3)]
+# ...
+```
+
+---
+
+## Supported Scorers
+
+All batch functions accept a `scorer` parameter. The following scorer names are recognized:
+
+<Table
+  columns={["Scorer name", "Category", "Description"]}
+  rows={[
+    ['`"levenshtein"`', "Edit distance", "Levenshtein similarity (normalized)"],
+    ['`"damerau_levenshtein"`', "Edit distance", "Damerau-Levenshtein similarity (normalized)"],
+    ['`"hamming"`', "Edit distance", "Hamming similarity (equal-length strings)"],
+    ['`"jaro"`', "Similarity", "Jaro similarity"],
+    ['`"jaro_winkler"`', "Similarity", "Jaro-Winkler similarity"],
+    ['`"cosine"`', "Token-based", "Cosine similarity over character bigrams"],
+    ['`"jaccard"`', "Token-based", "Jaccard index over whitespace tokens"],
+    ['`"sorensen_dice"`', "Token-based", "Dice coefficient over character bigrams"],
+    ['`"token_sort_ratio"`', "Token-based", "Sorted-token ratio"],
+    ['`"token_set_ratio"`', "Token-based", "Set-token ratio"],
+    ['`"partial_ratio"`', "Token-based", "Best-substring ratio"],
+    ['`"ngram_similarity"`', "Token-based", "N-gram overlap similarity"],
+    ['`"lcs"`', "Subsequence", "Longest common subsequence similarity"],
+    ['`"longest_common_substring"`', "Subsequence", "Longest common substring similarity"],
+    ['`"smith_waterman"`', "Alignment", "Smith-Waterman similarity (normalized)"],
+  ]}
+/>
+
+---
+
+## Performance Tips
+
+- **Use `cdist` instead of nested loops.** `cdist` parallelizes across CPU cores and avoids Python loop overhead. For 10,000 x 10,000 comparisons, this is easily 100x faster than a Python loop.
+- **Arrow variants avoid serialization.** If your data is already in Polars or another Arrow-native library, use the Arrow variants to skip Python object conversion entirely.
+- **Set a threshold.** Both `match_best` and `match_batch` support early termination when a threshold is provided.
+- **Use `TfIdfMatcher` for large corpora.** When your candidate list is large and static, the TF-IDF index amortizes the cost of building an inverted index across many queries.
+- **`CompositeScorer` presets are tuned.** The built-in presets have been validated against common name, address, and company matching benchmarks.
+
+---
+
+## See Also
+
+- **[String Metrics](./string-metrics)** -- individual metric functions used by batch operations
+- **[Phonetic Algorithms](./phonetic)** -- `phonetic_batch_arrow` for encoding entire columns
+- **[Preprocessing](./preprocessing)** -- `preprocess_batch` and tokenization batch functions
+- **[Scoring & Presets](./scoring)** -- more details on `CompositeScorer` presets
+- **[Pipeline API](./pipeline)** -- full record linkage pipelines that use batch operations internally
+- **[Performance Guide](/docs/guides/performance)** -- benchmarks and optimization strategies
