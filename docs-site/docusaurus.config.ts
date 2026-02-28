@@ -5,7 +5,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'reclink',
   tagline: 'Blazing-fast fuzzy matching and record linkage, powered by Rust',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/favicon_io/favicon.ico',
 
   future: {
     v4: true,
@@ -61,13 +61,17 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/og-image.png',
+    image: 'img/reclink-logo.png',
     colorMode: {
       defaultMode: 'dark',
       respectPrefersColorScheme: true,
     },
     navbar: {
       title: 'reclink',
+      logo: {
+        alt: 'reclink logo',
+        src: 'img/icon.png',
+      },
       items: [
         {
           type: 'docSidebar',

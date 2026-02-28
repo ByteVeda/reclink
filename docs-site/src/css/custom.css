@@ -41,6 +41,12 @@
   margin: 0 auto;
 }
 
+.hero-logo {
+  width: 120px;
+  height: 120px;
+  margin-bottom: 1rem;
+}
+
 /* Install command */
 .install-command {
   display: inline-block;

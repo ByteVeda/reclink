@@ -1,6 +1,10 @@
-# reclink
+<p align="center">
+  <img src="docs-site/static/img/icon.png" alt="reclink" width="120" height="120">
+</p>
 
-Blazing-fast fuzzy matching and record linkage library powered by Rust.
+<h1 align="center">reclink</h1>
+
+<p align="center">Blazing-fast fuzzy matching and record linkage library powered by Rust.</p>
 
 ## Features
 

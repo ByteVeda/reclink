@@ -42,6 +42,7 @@ function HomepageHeader(): ReactNode {
   return (
     <header className="hero-banner">
       <div className="container">
+        <img src="img/icon.png" alt="reclink" className="hero-logo" />
         <Heading as="h1">{siteConfig.title}</Heading>
         <p>{siteConfig.tagline}</p>
         <div className="install-command">pip install reclink</div>
