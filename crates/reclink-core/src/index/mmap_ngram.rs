@@ -289,6 +289,21 @@ impl MmapNgramIndex {
         self.num_strings == 0
     }
 
+    /// Estimates the heap memory usage of this index in bytes.
+    #[must_use]
+    pub fn memory_usage(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>();
+        // Backing data (mmap or heap Vec)
+        bytes += self.data().len();
+        // Cached inverted index
+        for (key, postings) in &self.index {
+            bytes += std::mem::size_of::<String>() + key.capacity();
+            bytes += std::mem::size_of::<Vec<usize>>()
+                + postings.capacity() * std::mem::size_of::<usize>();
+        }
+        bytes
+    }
+
     fn count_shared(&self, query_ngrams: &[String]) -> Vec<(usize, usize)> {
         let mut counts: AHashMap<usize, usize> = AHashMap::new();
         for ng in query_ngrams {
@@ -428,6 +443,18 @@ mod tests {
 
         let result = MmapNgramIndex::open(&path);
         assert!(result.is_err());
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn memory_usage_nonzero() {
+        let path = test_path("test_mem.rngi");
+        let strings = ["hello", "help", "world"];
+        MmapNgramIndex::build_and_save(&strings, 2, &path).unwrap();
+
+        let index = MmapNgramIndex::open(&path).unwrap();
+        assert!(index.memory_usage() > 0);
 
         std::fs::remove_file(&path).ok();
     }

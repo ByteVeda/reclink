@@ -15,11 +15,15 @@ impl SimilarityMetric for Jaccard {
     }
 }
 
-/// Computes Jaccard similarity between whitespace-tokenized sets of two strings.
+/// Computes Jaccard similarity between tokenized sets of two strings.
+///
+/// Automatically handles CJK text by splitting CJK characters into unigrams.
 #[must_use]
 pub fn jaccard_similarity(a: &str, b: &str) -> f64 {
-    let set_a: AHashSet<&str> = a.split_whitespace().collect();
-    let set_b: AHashSet<&str> = b.split_whitespace().collect();
+    let tokens_a = crate::preprocess::tokenize::tokenize_for_matching(a);
+    let tokens_b = crate::preprocess::tokenize::tokenize_for_matching(b);
+    let set_a: AHashSet<&str> = tokens_a.iter().map(|s| s.as_str()).collect();
+    let set_b: AHashSet<&str> = tokens_b.iter().map(|s| s.as_str()).collect();
 
     if set_a.is_empty() && set_b.is_empty() {
         return 1.0;

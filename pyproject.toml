@@ -17,6 +17,7 @@ pandas = ["pandas>=1.5"]
 polars = ["polars>=0.20"]
 dev = [
     "pytest>=7.0",
+    "pytest-asyncio>=0.23",
     "pandas>=1.5",
     "polars>=0.20",
     "ruff>=0.9",

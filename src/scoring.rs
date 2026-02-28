@@ -170,9 +170,57 @@ impl PyStreamingMatcher {
     }
 }
 
+/// Bounded-channel streaming matcher with backpressure.
+///
+/// Scores candidates in a background thread with a bounded buffer.
+/// When the buffer is full, the producer thread blocks until the consumer
+/// reads results, providing true backpressure.
+#[pyclass]
+struct PyBoundedStreamingMatcher {
+    inner: reclink_core::metrics::streaming::backpressure::BoundedStreamingMatcher,
+}
+
+#[pymethods]
+impl PyBoundedStreamingMatcher {
+    /// Create a new bounded streaming matcher.
+    #[new]
+    #[pyo3(signature = (query, scorer="jaro_winkler", threshold=None, buffer_size=64))]
+    fn new(
+        query: String,
+        scorer: &str,
+        threshold: Option<f64>,
+        buffer_size: usize,
+    ) -> PyResult<Self> {
+        let metric =
+            metrics::metric_from_name(scorer).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self {
+            inner: reclink_core::metrics::streaming::backpressure::BoundedStreamingMatcher::new(
+                query,
+                metric,
+                threshold,
+                buffer_size,
+            ),
+        })
+    }
+
+    /// Score a chunk of candidates with a global index offset.
+    ///
+    /// Returns list of (matched_string, score, global_index) tuples.
+    #[pyo3(signature = (candidates, offset=0))]
+    fn score_bounded(
+        &self,
+        py: Python<'_>,
+        candidates: Vec<String>,
+        offset: usize,
+    ) -> Vec<(String, f64, usize)> {
+        py.allow_threads(|| self.inner.score_bounded(candidates, offset))
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTfIdfMatcher>()?;
     m.add_class::<PyCompositeScorer>()?;
     m.add_class::<PyStreamingMatcher>()?;
+    m.add_class::<PyBoundedStreamingMatcher>()?;
     Ok(())
 }

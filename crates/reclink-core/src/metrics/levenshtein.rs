@@ -74,83 +74,84 @@ fn myers_bit_parallel(pattern: &[char], text: &[char]) -> usize {
 /// - HN shift carry from `HN << 1`
 ///
 /// Time: O(n · ⌈m/64⌉).
+#[allow(clippy::needless_range_loop)]
 fn myers_multi_block(pattern: &[char], text: &[char]) -> usize {
+    use crate::metrics::scratch::LEV_SCRATCH;
+
     let m = pattern.len();
     let num_blocks = m.div_ceil(64);
 
-    // Precompute pattern-match bitmasks per block: pm[c][block] has bit set for matches
-    let mut pm: AHashMap<char, Vec<u64>> = AHashMap::new();
-    for (i, &c) in pattern.iter().enumerate() {
-        let block = i / 64;
-        let bit = i % 64;
-        let entry = pm.entry(c).or_insert_with(|| vec![0u64; num_blocks]);
-        entry[block] |= 1u64 << bit;
-    }
+    LEV_SCRATCH.with_borrow_mut(|scratch| {
+        scratch.reset(num_blocks);
 
-    // Last block mask: only the bits that correspond to actual pattern positions
-    let last_block_bits = m % 64;
-    let last_mask = if last_block_bits == 0 {
-        1u64 << 63
-    } else {
-        1u64 << (last_block_bits - 1)
-    };
-
-    let mut vp = vec![!0u64; num_blocks];
-    let mut vn = vec![0u64; num_blocks];
-    let mut score = m;
-
-    let empty_pm = vec![0u64; num_blocks];
-
-    for &tc in text {
-        let pm_j = pm.get(&tc).unwrap_or(&empty_pm);
-
-        // Three independent carry chains across blocks
-        let mut carry_add: u64 = 0; // carry from addition
-        let mut carry_hp: u64 = 1; // carry for HP << 1 (|1 in single-block)
-        let mut carry_hn: u64 = 0; // carry for HN << 1
-
-        for k in 0..num_blocks {
-            let eq = pm_j[k];
-            let xv = eq | vn[k];
-            let xh = xv & vp[k];
-
-            // Add with carry: xh + vp[k] + carry_add
-            let sum = xh.wrapping_add(vp[k]);
-            let c1 = (sum < xh) as u64;
-            let sum2 = sum.wrapping_add(carry_add);
-            let c2 = (sum2 < sum) as u64;
-            carry_add = c1 + c2; // at most 1 (can't both overflow)
-
-            let d0 = (sum2 ^ vp[k]) | eq | vn[k];
-            let hp = vn[k] | !(d0 | vp[k]);
-            let hn = d0 & vp[k];
-
-            // Update score from last block only
-            if k == num_blocks - 1 {
-                if hp & last_mask != 0 {
-                    score += 1;
-                }
-                if hn & last_mask != 0 {
-                    score -= 1;
-                }
-            }
-
-            // Shift HP and HN with carry propagation
-            let next_carry_hp = hp >> 63;
-            let next_carry_hn = hn >> 63;
-
-            let hp_shifted = (hp << 1) | carry_hp;
-            let hn_shifted = (hn << 1) | carry_hn;
-
-            vp[k] = hn_shifted | !(d0 | hp_shifted);
-            vn[k] = d0 & hp_shifted;
-
-            carry_hp = next_carry_hp;
-            carry_hn = next_carry_hn;
+        // Precompute pattern-match bitmasks per block
+        for (i, &c) in pattern.iter().enumerate() {
+            let block = i / 64;
+            let bit = i % 64;
+            let entry = scratch
+                .pm
+                .entry(c)
+                .or_insert_with(|| vec![0u64; num_blocks]);
+            entry[block] |= 1u64 << bit;
         }
-    }
 
-    score
+        // Last block mask
+        let last_block_bits = m % 64;
+        let last_mask = if last_block_bits == 0 {
+            1u64 << 63
+        } else {
+            1u64 << (last_block_bits - 1)
+        };
+
+        let mut score = m;
+
+        for &tc in text {
+            let pm_j = scratch.pm.get(&tc).unwrap_or(&scratch.empty_pm);
+
+            let mut carry_add: u64 = 0;
+            let mut carry_hp: u64 = 1;
+            let mut carry_hn: u64 = 0;
+
+            for k in 0..num_blocks {
+                let eq = pm_j[k];
+                let xv = eq | scratch.vn[k];
+                let xh = xv & scratch.vp[k];
+
+                let sum = xh.wrapping_add(scratch.vp[k]);
+                let c1 = (sum < xh) as u64;
+                let sum2 = sum.wrapping_add(carry_add);
+                let c2 = (sum2 < sum) as u64;
+                carry_add = c1 + c2;
+
+                let d0 = (sum2 ^ scratch.vp[k]) | eq | scratch.vn[k];
+                let hp = scratch.vn[k] | !(d0 | scratch.vp[k]);
+                let hn = d0 & scratch.vp[k];
+
+                if k == num_blocks - 1 {
+                    if hp & last_mask != 0 {
+                        score += 1;
+                    }
+                    if hn & last_mask != 0 {
+                        score -= 1;
+                    }
+                }
+
+                let next_carry_hp = hp >> 63;
+                let next_carry_hn = hn >> 63;
+
+                let hp_shifted = (hp << 1) | carry_hp;
+                let hn_shifted = (hn << 1) | carry_hn;
+
+                scratch.vp[k] = hn_shifted | !(d0 | hp_shifted);
+                scratch.vn[k] = d0 & hp_shifted;
+
+                carry_hp = next_carry_hp;
+                carry_hn = next_carry_hn;
+            }
+        }
+
+        score
+    })
 }
 
 /// Computes Levenshtein distance using Myers' bit-parallel algorithm for strings ≤ 64 chars,

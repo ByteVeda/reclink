@@ -48,48 +48,52 @@ fn lcs_bit_parallel(a_chars: &[char], b_chars: &[char]) -> usize {
 /// operation across block boundaries.
 ///
 /// Time: O(n · ⌈m/64⌉)
+#[allow(clippy::needless_range_loop)]
 fn lcs_multi_block(a_chars: &[char], b_chars: &[char]) -> usize {
+    use crate::metrics::scratch::LCS_SCRATCH;
+
     let m = a_chars.len();
     let num_blocks = m.div_ceil(64);
 
-    // Build pattern-match bitmask per block
-    let mut pm: AHashMap<char, Vec<u64>> = AHashMap::new();
-    for (i, &c) in a_chars.iter().enumerate() {
-        let block = i / 64;
-        let bit = i % 64;
-        let entry = pm.entry(c).or_insert_with(|| vec![0u64; num_blocks]);
-        entry[block] |= 1u64 << bit;
-    }
+    LCS_SCRATCH.with_borrow_mut(|scratch| {
+        scratch.reset(num_blocks);
 
-    let mut s = vec![0u64; num_blocks];
-    let empty_pm = vec![0u64; num_blocks];
-
-    for &bc in b_chars {
-        let pm_bc = pm.get(&bc).unwrap_or(&empty_pm);
-
-        let mut carry_shift: u64 = 1; // initial carry for (S << 1) | 1
-        let mut carry_sub: u64 = 0; // borrow for subtraction
-
-        for k in 0..num_blocks {
-            let x = pm_bc[k] | s[k];
-
-            // (s[k] << 1) | carry_shift, with carry propagation
-            let s_shifted = (s[k] << 1) | carry_shift;
-            carry_shift = s[k] >> 63;
-
-            // x - s_shifted with borrow propagation
-            let y = x.wrapping_sub(s_shifted).wrapping_sub(carry_sub);
-            carry_sub = if x < s_shifted || (carry_sub > 0 && x.wrapping_sub(s_shifted) == 0) {
-                1
-            } else {
-                0
-            };
-
-            s[k] = x & (x ^ y);
+        // Build pattern-match bitmask per block
+        for (i, &c) in a_chars.iter().enumerate() {
+            let block = i / 64;
+            let bit = i % 64;
+            let entry = scratch
+                .pm
+                .entry(c)
+                .or_insert_with(|| vec![0u64; num_blocks]);
+            entry[block] |= 1u64 << bit;
         }
-    }
 
-    s.iter().map(|&v| v.count_ones() as usize).sum()
+        for &bc in b_chars {
+            let pm_bc = scratch.pm.get(&bc).unwrap_or(&scratch.empty_pm);
+
+            let mut carry_shift: u64 = 1;
+            let mut carry_sub: u64 = 0;
+
+            for k in 0..num_blocks {
+                let x = pm_bc[k] | scratch.s[k];
+
+                let s_shifted = (scratch.s[k] << 1) | carry_shift;
+                carry_shift = scratch.s[k] >> 63;
+
+                let y = x.wrapping_sub(s_shifted).wrapping_sub(carry_sub);
+                carry_sub = if x < s_shifted || (carry_sub > 0 && x.wrapping_sub(s_shifted) == 0) {
+                    1
+                } else {
+                    0
+                };
+
+                scratch.s[k] = x & (x ^ y);
+            }
+        }
+
+        scratch.s.iter().map(|&v| v.count_ones() as usize).sum()
+    })
 }
 
 /// Computes the length of the longest common subsequence.

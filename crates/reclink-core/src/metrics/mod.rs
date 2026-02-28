@@ -6,6 +6,7 @@
 //!
 //! All algorithms are implemented from scratch with buffer reuse for batch operations.
 
+pub(crate) mod scratch;
 pub(crate) mod simd_util;
 
 pub mod alignment;

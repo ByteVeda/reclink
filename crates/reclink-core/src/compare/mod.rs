@@ -23,4 +23,12 @@ pub trait FieldComparator: Send + Sync {
 
     /// Computes similarity between two field values, returning a score in \[0, 1\].
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64;
+
+    /// Estimated relative cost of this comparator (lower = cheaper).
+    ///
+    /// Used by the pipeline to sort comparators cheapest-first for early termination.
+    /// Custom comparators inherit the safe default of `100`.
+    fn estimated_cost(&self) -> u32 {
+        100
+    }
 }

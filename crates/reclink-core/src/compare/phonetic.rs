@@ -27,6 +27,10 @@ impl FieldComparator for PhoneticComparator {
         &self.field
     }
 
+    fn estimated_cost(&self) -> u32 {
+        20
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         let a_text = match a {
             FieldValue::Text(s) => s.as_str(),

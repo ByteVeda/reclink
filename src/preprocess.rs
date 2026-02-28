@@ -175,6 +175,76 @@ fn transliterate_greek(s: &str) -> String {
     )
 }
 
+/// Transliterate Arabic characters to Latin equivalents.
+///
+/// Non-Arabic characters (including Latin) are passed through unchanged.
+#[pyfunction]
+fn transliterate_arabic(s: &str) -> String {
+    reclink_core::preprocess::transliterate::transliterate(
+        s,
+        reclink_core::preprocess::transliterate::Script::Arabic,
+    )
+}
+
+/// Transliterate Hebrew characters to Latin equivalents.
+///
+/// Non-Hebrew characters (including Latin) are passed through unchanged.
+#[pyfunction]
+fn transliterate_hebrew(s: &str) -> String {
+    reclink_core::preprocess::transliterate::transliterate(
+        s,
+        reclink_core::preprocess::transliterate::Script::Hebrew,
+    )
+}
+
+/// Strip Arabic diacritics (harakat, tatweel, superscript alef).
+#[pyfunction]
+fn strip_arabic_diacritics(s: &str) -> String {
+    preprocess::strip_arabic_diacritics(s)
+}
+
+/// Strip Hebrew diacritics (niqqud, cantillation marks).
+#[pyfunction]
+fn strip_hebrew_diacritics(s: &str) -> String {
+    preprocess::strip_hebrew_diacritics(s)
+}
+
+/// Normalize Arabic text (alef variants → bare alef, teh marbuta → heh).
+#[pyfunction]
+fn normalize_arabic(s: &str) -> String {
+    preprocess::normalize_arabic(s)
+}
+
+/// Strip Unicode bidirectional control marks.
+#[pyfunction]
+fn strip_bidi_marks(s: &str) -> String {
+    preprocess::strip_bidi_marks(s)
+}
+
+/// Transliterate Devanagari characters to Latin equivalents (IAST-style).
+///
+/// Virama-aware: consonant clusters are handled correctly.
+/// Non-Devanagari characters are passed through unchanged.
+#[pyfunction]
+fn transliterate_devanagari(s: &str) -> String {
+    reclink_core::preprocess::transliterate::transliterate(
+        s,
+        reclink_core::preprocess::transliterate::Script::Devanagari,
+    )
+}
+
+/// Transliterate Hangul characters to Latin equivalents (Revised Romanization).
+///
+/// Algorithmically decomposes syllable blocks into initial/medial/final components.
+/// Non-Hangul characters are passed through unchanged.
+#[pyfunction]
+fn transliterate_hangul(s: &str) -> String {
+    reclink_core::preprocess::transliterate::transliterate(
+        s,
+        reclink_core::preprocess::transliterate::Script::Hangul,
+    )
+}
+
 /// Apply a chain of preprocessing operations to a batch of strings in parallel.
 #[pyfunction]
 fn preprocess_batch(
@@ -244,6 +314,48 @@ fn character_tokenize_batch(py: Python<'_>, strings: Vec<String>) -> Vec<Vec<Str
     })
 }
 
+/// Generate character n-grams from CJK text.
+///
+/// Extracts CJK characters and produces n-grams of the specified size.
+#[pyfunction]
+#[pyo3(signature = (s, n=2))]
+fn cjk_ngram_tokenize(s: &str, n: usize) -> Vec<String> {
+    preprocess::cjk_ngram_tokenize(s, n)
+}
+
+/// Smart n-gram tokenizer for mixed CJK/Latin text.
+///
+/// CJK characters become character n-grams; Latin runs become whitespace tokens.
+#[pyfunction]
+#[pyo3(signature = (s, n=2))]
+fn smart_tokenize_ngram(s: &str, n: usize) -> Vec<String> {
+    preprocess::smart_tokenize_ngram(s, n)
+}
+
+/// Generate CJK character n-grams for a batch of strings in parallel.
+#[pyfunction]
+#[pyo3(signature = (strings, n=2))]
+fn cjk_ngram_tokenize_batch(py: Python<'_>, strings: Vec<String>, n: usize) -> Vec<Vec<String>> {
+    py.allow_threads(|| {
+        strings
+            .par_iter()
+            .map(|s| preprocess::cjk_ngram_tokenize(s, n))
+            .collect()
+    })
+}
+
+/// Smart n-gram tokenize a batch of strings in parallel.
+#[pyfunction]
+#[pyo3(signature = (strings, n=2))]
+fn smart_tokenize_ngram_batch(py: Python<'_>, strings: Vec<String>, n: usize) -> Vec<Vec<String>> {
+    py.allow_threads(|| {
+        strings
+            .par_iter()
+            .map(|s| preprocess::smart_tokenize_ngram(s, n))
+            .collect()
+    })
+}
+
 /// Smart-tokenize each string in parallel.
 #[pyfunction]
 fn smart_tokenize_batch(py: Python<'_>, strings: Vec<String>) -> Vec<Vec<String>> {
@@ -275,6 +387,14 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(synonym_expand, m)?)?;
     m.add_function(wrap_pyfunction!(transliterate_cyrillic, m)?)?;
     m.add_function(wrap_pyfunction!(transliterate_greek, m)?)?;
+    m.add_function(wrap_pyfunction!(transliterate_arabic, m)?)?;
+    m.add_function(wrap_pyfunction!(transliterate_hebrew, m)?)?;
+    m.add_function(wrap_pyfunction!(strip_arabic_diacritics, m)?)?;
+    m.add_function(wrap_pyfunction!(strip_hebrew_diacritics, m)?)?;
+    m.add_function(wrap_pyfunction!(normalize_arabic, m)?)?;
+    m.add_function(wrap_pyfunction!(strip_bidi_marks, m)?)?;
+    m.add_function(wrap_pyfunction!(transliterate_devanagari, m)?)?;
+    m.add_function(wrap_pyfunction!(transliterate_hangul, m)?)?;
     m.add_function(wrap_pyfunction!(preprocess_batch, m)?)?;
     m.add_function(wrap_pyfunction!(ngram_tokenize_batch, m)?)?;
     m.add_function(wrap_pyfunction!(whitespace_tokenize_batch, m)?)?;
@@ -282,5 +402,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(smart_tokenize, m)?)?;
     m.add_function(wrap_pyfunction!(character_tokenize_batch, m)?)?;
     m.add_function(wrap_pyfunction!(smart_tokenize_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(cjk_ngram_tokenize, m)?)?;
+    m.add_function(wrap_pyfunction!(smart_tokenize_ngram, m)?)?;
+    m.add_function(wrap_pyfunction!(cjk_ngram_tokenize_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(smart_tokenize_ngram_batch, m)?)?;
     Ok(())
 }

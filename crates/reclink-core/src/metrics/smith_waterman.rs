@@ -107,31 +107,36 @@ fn sw_dp_scalar(
     mismatch_penalty: f64,
     gap_penalty: f64,
 ) -> f64 {
+    use crate::metrics::scratch::SW_SCRATCH;
+
     let b_len = b_chars.len();
-    let mut prev = vec![0.0f64; b_len + 1];
-    let mut max_score = 0.0f64;
 
-    for ac in a_chars {
-        let mut prev_diag = 0.0;
-        for j in 1..=b_len {
-            let old = prev[j];
-            let diag = if *ac == b_chars[j - 1] {
-                prev_diag + match_score
-            } else {
-                prev_diag + mismatch_penalty
-            };
+    SW_SCRATCH.with_borrow_mut(|scratch| {
+        scratch.reset(b_len);
+        let mut max_score = 0.0f64;
 
-            prev[j] = 0.0f64
-                .max(diag)
-                .max(prev[j] + gap_penalty)
-                .max(prev[j - 1] + gap_penalty);
+        for ac in a_chars {
+            let mut prev_diag = 0.0;
+            for j in 1..=b_len {
+                let old = scratch.prev[j];
+                let diag = if *ac == b_chars[j - 1] {
+                    prev_diag + match_score
+                } else {
+                    prev_diag + mismatch_penalty
+                };
 
-            max_score = max_score.max(prev[j]);
-            prev_diag = old;
+                scratch.prev[j] = 0.0f64
+                    .max(diag)
+                    .max(scratch.prev[j] + gap_penalty)
+                    .max(scratch.prev[j - 1] + gap_penalty);
+
+                max_score = max_score.max(scratch.prev[j]);
+                prev_diag = old;
+            }
         }
-    }
 
-    max_score
+        max_score
+    })
 }
 
 /// Computes normalized Smith-Waterman similarity using default parameters.

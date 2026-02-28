@@ -6,16 +6,18 @@
 pub mod custom;
 mod normalize;
 pub mod stop_words;
-mod tokenize;
+pub(crate) mod tokenize;
 pub mod transliterate;
 
 pub use normalize::{
-    clean_address, clean_company, clean_name, expand_abbreviations, fold_case, normalize_email,
-    normalize_unicode, normalize_url, normalize_whitespace, regex_replace, remove_stop_words,
-    standardize_name, strip_diacritics, strip_punctuation, NormalizationForm,
+    clean_address, clean_company, clean_name, expand_abbreviations, fold_case, normalize_arabic,
+    normalize_email, normalize_unicode, normalize_url, normalize_whitespace, regex_replace,
+    remove_stop_words, standardize_name, strip_arabic_diacritics, strip_bidi_marks,
+    strip_diacritics, strip_hebrew_diacritics, strip_punctuation, NormalizationForm,
 };
 pub use tokenize::{
-    character_tokenize, is_cjk, ngram_tokenize, smart_tokenize, whitespace_tokenize,
+    character_tokenize, cjk_ngram_tokenize, is_cjk, ngram_tokenize, smart_tokenize,
+    smart_tokenize_ngram, whitespace_tokenize,
 };
 
 use rayon::prelude::*;
@@ -62,6 +64,19 @@ pub enum PreprocessOp {
     },
     /// Transliterate from a non-Latin script to Latin characters.
     Transliterate(transliterate::Script),
+    /// Strip Arabic diacritics (harakat, tatweel, superscript alef).
+    StripArabicDiacritics,
+    /// Strip Hebrew diacritics (niqqud, cantillation marks).
+    StripHebrewDiacritics,
+    /// Normalize Arabic text (alef variants, teh marbuta).
+    NormalizeArabic,
+    /// Strip Unicode bidirectional control marks.
+    StripBidiMarks,
+    /// CJK character n-gram tokenization (join result with spaces).
+    CjkNgramTokenize {
+        /// N-gram size.
+        n: usize,
+    },
     /// User-defined custom preprocessing operation.
     Custom {
         /// Name of the registered custom preprocessor.
@@ -100,7 +115,12 @@ pub fn apply_ops(s: &str, ops: &[PreprocessOp]) -> Result<String> {
             PreprocessOp::NormalizeEmail => normalize_email(&result),
             PreprocessOp::NormalizeUrl => normalize_url(&result),
             PreprocessOp::SynonymExpand { table } => expand_abbreviations(&result, table),
+            PreprocessOp::StripArabicDiacritics => strip_arabic_diacritics(&result),
+            PreprocessOp::StripHebrewDiacritics => strip_hebrew_diacritics(&result),
+            PreprocessOp::NormalizeArabic => normalize_arabic(&result),
+            PreprocessOp::StripBidiMarks => strip_bidi_marks(&result),
             PreprocessOp::Transliterate(script) => transliterate::transliterate(&result, *script),
+            PreprocessOp::CjkNgramTokenize { n } => cjk_ngram_tokenize(&result, *n).join(" "),
             PreprocessOp::Custom { name } => custom::apply_custom_preprocessor(name, &result)?,
         };
     }

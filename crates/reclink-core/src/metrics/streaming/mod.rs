@@ -1,5 +1,8 @@
 //! Streaming matcher for lazy/chunked candidate processing.
 
+#[cfg(feature = "streaming-backpressure")]
+pub mod backpressure;
+
 use crate::metrics::Metric;
 
 /// Streaming matcher: scores candidates one at a time or in chunks.

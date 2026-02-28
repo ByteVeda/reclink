@@ -326,6 +326,16 @@ impl PyMmapNgramIndex {
     fn __len__(&self) -> usize {
         self.inner.len()
     }
+
+    /// Estimated heap memory usage in bytes.
+    fn memory_usage(&self) -> usize {
+        self.inner.memory_usage()
+    }
+
+    /// Estimated heap memory usage as a human-readable string.
+    fn memory_usage_human(&self) -> String {
+        format_bytes(self.inner.memory_usage())
+    }
 }
 
 /// MinHash/LSH index for approximate nearest-neighbor search.

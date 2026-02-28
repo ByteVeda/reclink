@@ -123,24 +123,25 @@ impl ReclinkPipeline {
         right: &RecordBatch,
         candidates: &[CandidatePair],
     ) -> Vec<ComparisonVector> {
+        let n = self.comparators.len();
         candidates
             .par_iter()
             .map(|pair| {
-                let scores: Vec<f64> = self
-                    .comparators
-                    .iter()
-                    .map(|cmp| {
-                        let left_val = left.records[pair.left]
-                            .get(cmp.field_name())
-                            .cloned()
-                            .unwrap_or(crate::record::FieldValue::Null);
-                        let right_val = right.records[pair.right]
-                            .get(cmp.field_name())
-                            .cloned()
-                            .unwrap_or(crate::record::FieldValue::Null);
-                        cmp.compare(&left_val, &right_val)
-                    })
-                    .collect();
+                let mut scores = vec![0.0; n];
+                for (i, cmp) in self.comparators.iter().enumerate() {
+                    let left_val = left.records[pair.left]
+                        .get(cmp.field_name())
+                        .cloned()
+                        .unwrap_or(crate::record::FieldValue::Null);
+                    let right_val = right.records[pair.right]
+                        .get(cmp.field_name())
+                        .cloned()
+                        .unwrap_or(crate::record::FieldValue::Null);
+                    scores[i] = cmp.compare(&left_val, &right_val);
+                    if self.classifier.can_reject_early(&scores, n) {
+                        break; // remaining scores stay 0.0
+                    }
+                }
                 ComparisonVector {
                     pair: *pair,
                     scores,
@@ -201,6 +202,10 @@ impl PipelineBuilder {
     }
 
     /// Builds the pipeline, returning an error if not fully configured.
+    ///
+    /// Comparators are stable-sorted by [`FieldComparator::estimated_cost`]
+    /// so the pipeline evaluates cheapest comparators first, enabling
+    /// early termination via [`Classifier::can_reject_early`].
     pub fn build(self) -> Result<ReclinkPipeline> {
         if self.blockers.is_empty() {
             return Err(ReclinkError::Pipeline(
@@ -215,9 +220,11 @@ impl PipelineBuilder {
         let classifier = self
             .classifier
             .ok_or_else(|| ReclinkError::Pipeline("a classifier is required".into()))?;
+        let mut comparators = self.comparators;
+        comparators.sort_by_key(|c| c.estimated_cost());
         Ok(ReclinkPipeline {
             blockers: self.blockers,
-            comparators: self.comparators,
+            comparators,
             classifier,
             cluster: self.cluster,
         })

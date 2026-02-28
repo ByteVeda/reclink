@@ -27,6 +27,10 @@ impl FieldComparator for NumericComparator {
         &self.field
     }
 
+    fn estimated_cost(&self) -> u32 {
+        2
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         let a_val = match a {
             FieldValue::Integer(i) => *i as f64,

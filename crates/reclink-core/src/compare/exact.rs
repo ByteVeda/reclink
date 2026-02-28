@@ -24,6 +24,10 @@ impl FieldComparator for ExactComparator {
         &self.field
     }
 
+    fn estimated_cost(&self) -> u32 {
+        1
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         if a == b && !a.is_null() {
             1.0

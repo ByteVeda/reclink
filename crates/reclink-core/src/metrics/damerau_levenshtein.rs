@@ -22,43 +22,47 @@ impl DistanceMetric for DamerauLevenshtein {
 /// Uses only 3 rows (prev-prev, prev, current) instead of the full matrix,
 /// reducing space from O(m·n) to O(min(m,n)).
 fn osa_three_row(row_chars: &[char], col_chars: &[char]) -> usize {
+    use crate::metrics::scratch::DL_SCRATCH;
+
     let rows = row_chars.len();
     let cols = col_chars.len();
 
-    let mut prev_prev = vec![0usize; cols + 1];
-    let mut prev: Vec<usize> = (0..=cols).collect();
-    let mut curr = vec![0usize; cols + 1];
+    DL_SCRATCH.with_borrow_mut(|scratch| {
+        scratch.reset(cols);
 
-    for i in 1..=rows {
-        curr[0] = i;
+        for i in 1..=rows {
+            scratch.curr[0] = i;
 
-        for j in 1..=cols {
-            let cost = if row_chars[i - 1] == col_chars[j - 1] {
-                0
-            } else {
-                1
-            };
+            for j in 1..=cols {
+                let cost = if row_chars[i - 1] == col_chars[j - 1] {
+                    0
+                } else {
+                    1
+                };
 
-            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+                scratch.curr[j] = (scratch.prev[j] + 1)
+                    .min(scratch.curr[j - 1] + 1)
+                    .min(scratch.prev[j - 1] + cost);
 
-            if i > 1
-                && j > 1
-                && row_chars[i - 1] == col_chars[j - 2]
-                && row_chars[i - 2] == col_chars[j - 1]
-            {
-                curr[j] = curr[j].min(prev_prev[j - 2] + 1);
+                if i > 1
+                    && j > 1
+                    && row_chars[i - 1] == col_chars[j - 2]
+                    && row_chars[i - 2] == col_chars[j - 1]
+                {
+                    scratch.curr[j] = scratch.curr[j].min(scratch.prev_prev[j - 2] + 1);
+                }
+            }
+
+            // Rotate rows
+            std::mem::swap(&mut scratch.prev_prev, &mut scratch.prev);
+            std::mem::swap(&mut scratch.prev, &mut scratch.curr);
+            for v in scratch.curr.iter_mut() {
+                *v = 0;
             }
         }
 
-        // Rotate rows
-        std::mem::swap(&mut prev_prev, &mut prev);
-        std::mem::swap(&mut prev, &mut curr);
-        for v in curr.iter_mut() {
-            *v = 0;
-        }
-    }
-
-    prev[cols]
+        scratch.prev[cols]
+    })
 }
 
 /// Computes the optimal string alignment distance (restricted Damerau-Levenshtein).

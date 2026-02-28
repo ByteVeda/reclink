@@ -40,6 +40,22 @@ impl Classifier for WeightedSumClassifier {
             },
         }
     }
+
+    fn can_reject_early(&self, partial_scores: &[f64], _total_comparators: usize) -> bool {
+        // Current weighted sum + max possible from remaining (weight * 1.0)
+        let current_sum: f64 = partial_scores
+            .iter()
+            .zip(self.weights.iter())
+            .map(|(s, w)| s * w)
+            .sum();
+        let remaining_max: f64 = partial_scores
+            .iter()
+            .zip(self.weights.iter())
+            .filter(|(&s, _)| s == 0.0)
+            .map(|(_, w)| *w)
+            .sum();
+        current_sum + remaining_max < self.threshold
+    }
 }
 
 /// Classifies pairs into three bands using weighted sum:
