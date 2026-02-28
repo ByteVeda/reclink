@@ -1,0 +1,363 @@
+---
+sidebar_position: 10
+title: Streaming
+description: Lazy, chunked, and async APIs for matching against large or unbounded candidate sets.
+---
+
+# Streaming
+
+reclink provides streaming and async interfaces for scenarios where candidates do not fit in memory or arrive incrementally. All scoring is performed in Rust; the Python layer handles iteration and async scheduling.
+
+```python
+from reclink.streaming import match_stream
+from reclink import StreamingMatcher, BoundedStreamingMatcher
+import reclink.async_api as async_reclink
+```
+
+---
+
+## `match_stream`
+
+Lazily match a query against any iterable of candidates. Candidates are consumed in configurable chunks, so generators and file-backed iterators work without materializing the full dataset.
+
+```python
+from reclink.streaming import match_stream
+
+# Works with generators -- never loads all candidates at once
+candidates = ("candidate_" + str(i) for i in range(1_000_000))
+
+for matched_string, score, index in match_stream("target", candidates, threshold=0.8):
+    print(f"{matched_string} (score={score:.3f}, index={index})")
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "<em>required</em>", "The string to match against every candidate."],
+    ["`candidates`", "`Iterable[str]`", "<em>required</em>", "An iterable (list, generator, file object, etc.) of candidate strings."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum similarity to yield. `None` yields every candidate with its score."],
+    ["`chunk_size`", "`int`", "`1000`", "Number of candidates scored per Rust call. Larger chunks amortize FFI overhead; smaller chunks reduce peak memory."],
+  ]}
+/>
+
+### Yields
+
+<Table
+  columns={["Element", "Type", "Description"]}
+  rows={[
+    ["`matched_string`", "`str`", "The candidate string that matched."],
+    ["`score`", "`float`", "Similarity score in `[0, 1]`."],
+    ["`index`", "`int`", "Zero-based global position of the candidate in the original iterable."],
+  ]}
+/>
+
+---
+
+## StreamingMatcher
+
+A stateful matcher object for lower-level control. Useful when you want to score individual strings or manually manage chunks.
+
+```python
+from reclink import StreamingMatcher
+
+matcher = StreamingMatcher("target", scorer="jaro_winkler", threshold=0.8)
+
+# Score a single candidate -- returns float or None if below threshold
+score = matcher.score("candidate")
+
+# Score a batch of candidates -- returns (local_index, score) pairs
+results = matcher.score_chunk(["alpha", "bravo", "charlie"])
+for local_idx, score in results:
+    print(f"index={local_idx}, score={score:.3f}")
+```
+
+### Constructor
+
+```python
+StreamingMatcher(query, scorer="jaro_winkler", threshold=None)
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "<em>required</em>", "The reference string."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum score. Candidates below this are filtered out."],
+  ]}
+/>
+
+### Methods
+
+#### `score(candidate) -> float | None`
+
+Score a single candidate. Returns `None` if the score is below the threshold.
+
+#### `score_chunk(candidates) -> list[tuple[int, float]]`
+
+Score a list of candidates in one Rust call. Returns a list of `(local_index, score)` tuples for candidates that meet the threshold.
+
+---
+
+## BoundedStreamingMatcher
+
+Extends `StreamingMatcher` with a bounded internal buffer for backpressure control. This is the matcher used internally by the async streaming API.
+
+```python
+from reclink import BoundedStreamingMatcher
+
+matcher = BoundedStreamingMatcher(
+    "target",
+    scorer="jaro_winkler",
+    threshold=0.8,
+    buffer_size=64,
+)
+
+# Score a chunk with a global offset so indices are absolute
+results = matcher.score_bounded(["alpha", "bravo", "charlie"], offset=500)
+for matched_string, score, global_index in results:
+    print(f"{matched_string} (score={score:.3f}, index={global_index})")
+```
+
+### Constructor
+
+```python
+BoundedStreamingMatcher(query, scorer="jaro_winkler", threshold=None, buffer_size=64)
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "<em>required</em>", "The reference string."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum score filter."],
+    ["`buffer_size`", "`int`", "`64`", "Internal bounded-channel capacity. Controls backpressure when used with async consumers."],
+  ]}
+/>
+
+### Methods
+
+#### `score_bounded(candidates, offset=0) -> list[tuple[str, float, int]]`
+
+Score a chunk of candidates. The `offset` is added to each local index so the returned indices reflect global position.
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`candidates`", "`list[str]`", "<em>required</em>", "Candidate strings to score."],
+    ["`offset`", "`int`", "`0`", "Value added to each local index to produce global indices."],
+  ]}
+/>
+
+Returns a list of `(matched_string, score, global_index)` tuples.
+
+---
+
+## Async API
+
+The `reclink.async_api` module wraps every CPU-bound reclink operation with `asyncio.to_thread()`, releasing the event loop while Rust + Rayon compute in the background. All functions mirror their synchronous counterparts.
+
+```python
+import asyncio
+import reclink.async_api as async_reclink
+
+async def main():
+    # Cross-distance matrix
+    matrix = await async_reclink.cdist(["Jon", "Jane"], ["John", "Janet"])
+
+    # Best single match
+    best = await async_reclink.match_best("Jon", ["John", "Jane", "James"])
+
+    # All matches above threshold
+    batch = await async_reclink.match_batch("Jon", ["John", "Jane"], threshold=0.7)
+
+    # Element-wise similarity
+    scores = await async_reclink.pairwise_similarity(["Jon"], ["John"])
+
+    # Batch preprocessing
+    cleaned = await async_reclink.preprocess_batch(
+        ["  Jon  "], ["fold_case", "normalize_whitespace"]
+    )
+
+asyncio.run(main())
+```
+
+### Functions
+
+#### `await cdist(a, b, scorer="jaro_winkler", workers=None)`
+
+Async version of `reclink.cdist`. Returns a NumPy `NDArray[float64]` similarity matrix.
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`Sequence[str]`", "<em>required</em>", "First list of strings (rows)."],
+    ["`b`", "`Sequence[str]`", "<em>required</em>", "Second list of strings (columns)."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric name."],
+    ["`workers`", "`int` or `None`", "`None`", "Rayon thread count. `None` uses all cores."],
+  ]}
+/>
+
+#### `await match_best(query, candidates, scorer="jaro_winkler", threshold=None, workers=None)`
+
+Async version of `reclink.match_best`. Returns `(string, score, index)` or `None`.
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "<em>required</em>", "Query string."],
+    ["`candidates`", "`list[str]`", "<em>required</em>", "Candidate strings."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum score. Returns `None` if best match is below this."],
+    ["`workers`", "`int` or `None`", "`None`", "Rayon thread count."],
+  ]}
+/>
+
+#### `await match_batch(query, candidates, scorer="jaro_winkler", threshold=None, limit=None, workers=None)`
+
+Async version of `reclink.match_batch`. Returns a list of `(string, score, index)` tuples.
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "<em>required</em>", "Query string."],
+    ["`candidates`", "`list[str]`", "<em>required</em>", "Candidate strings."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum score filter."],
+    ["`limit`", "`int` or `None`", "`None`", "Maximum number of results."],
+    ["`workers`", "`int` or `None`", "`None`", "Rayon thread count."],
+  ]}
+/>
+
+#### `await pairwise_similarity(a, b, scorer="jaro_winkler")`
+
+Async version of `reclink.pairwise_similarity`. Compares `a[i]` with `b[i]` element-wise. Both lists must be the same length.
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`a`", "`list[str]`", "<em>required</em>", "First list of strings."],
+    ["`b`", "`list[str]`", "<em>required</em>", "Second list of strings."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric."],
+  ]}
+/>
+
+Returns `list[float]`.
+
+#### `await preprocess_batch(strings, operations)`
+
+Async version of `reclink.preprocess_batch`. Applies a sequence of preprocessing operations to every string in the list.
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`strings`", "`list[str]`", "<em>required</em>", "Strings to preprocess."],
+    ["`operations`", "`list[str]`", "<em>required</em>", 'Ordered list of operations (e.g., `["fold_case", "normalize_whitespace", "strip_punctuation"]`).'],
+  ]}
+/>
+
+Returns `list[str]`.
+
+---
+
+## Async Streaming
+
+`match_stream_async` is an async generator that combines chunked iteration with `asyncio.to_thread()` offloading. Each chunk is scored in a background thread so the event loop remains responsive.
+
+```python
+import asyncio
+from reclink.async_api import match_stream_async
+
+async def main():
+    candidates = ["John", "Jane", "James", "Janet", "Jon"]
+    async for matched, score, idx in match_stream_async("Jon", candidates, threshold=0.7):
+        print(f"{matched} score={score:.3f} idx={idx}")
+
+asyncio.run(main())
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`query`", "`str`", "<em>required</em>", "The reference string."],
+    ["`candidates`", "`Iterable[str]`", "<em>required</em>", "Candidate strings (may be a generator)."],
+    ["`scorer`", "`str`", '`"jaro_winkler"`', "Similarity metric."],
+    ["`threshold`", "`float` or `None`", "`None`", "Minimum score filter."],
+    ["`chunk_size`", "`int`", "`1000`", "Candidates per scoring call."],
+    ["`buffer_size`", "`int`", "`64`", "Bounded-channel capacity for backpressure."],
+  ]}
+/>
+
+### Yields
+
+`(matched_string, score, global_index)` tuples, same as the synchronous `match_stream`.
+
+---
+
+## AsyncPipeline
+
+Wraps a synchronous `ReclinkPipeline` so that `dedup`, `dedup_cluster`, and `link` can be awaited.
+
+```python
+import asyncio
+from reclink.async_api import AsyncPipeline
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("name", ["fold_case", "normalize_whitespace"])
+    .compare_string("name")
+    .classify_threshold(0.85)
+    .build()
+)
+async_pipeline = AsyncPipeline(pipeline)
+
+async def main():
+    matches = await async_pipeline.dedup(df)
+    clusters = await async_pipeline.dedup_cluster(df)
+    links = await async_pipeline.link(left_df, right_df)
+
+asyncio.run(main())
+```
+
+### Constructor
+
+```python
+AsyncPipeline(pipeline)
+```
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`pipeline`", "`ReclinkPipeline`", "<em>required</em>", "A fully-configured synchronous pipeline."],
+  ]}
+/>
+
+### Methods
+
+#### `await dedup(data, id_column="id")`
+
+Find duplicate pairs within a single dataset.
+
+#### `await dedup_cluster(data, id_column="id")`
+
+Find duplicate pairs and cluster them into groups.
+
+#### `await link(left, right, id_column="id")`
+
+Link records between two datasets.
+
+All three methods accept `list[dict]`, Pandas DataFrames, or Polars DataFrames.
+
+---
+
+## See Also
+
+- **[Batch Operations](./batch-operations)** -- `cdist`, `match_best`, and `match_batch` (synchronous)
+- **[Pipeline](./pipeline)** -- build and configure record linkage pipelines
+- **[Indexes](./indexes)** -- BK-tree, VP-tree, and MinHash for fast approximate search
+- **[Performance Guide](/docs/guides/performance)** -- tuning chunk sizes, worker counts, and memory usage

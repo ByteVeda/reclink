@@ -1,0 +1,455 @@
+---
+sidebar_position: 3
+title: Custom Plugins
+description: Extend reclink with custom metrics, blockers, comparators, classifiers, and preprocessors using Python callbacks.
+---
+
+# Custom Plugins
+
+reclink's built-in algorithms cover most use cases, but sometimes you need domain-specific logic. The plugin system lets you register Python functions that integrate seamlessly with `cdist`, `match_best`, pipelines, and every other reclink operation.
+
+## Overview
+
+<Table
+  columns={["Plugin type", "Registration function", "Used in"]}
+  rows={[
+    [<strong>Metric</strong>, "`register_metric`", "`cdist`, `match_best`, `match_batch`, `CompositeScorer`"],
+    [<strong>Blocker</strong>, "`register_blocker`", "`PipelineBuilder.block_custom`"],
+    [<strong>Comparator</strong>, "`register_comparator`", "`PipelineBuilder.compare_custom`"],
+    [<strong>Classifier</strong>, "`register_classifier`", "`PipelineBuilder.classify_custom`"],
+    [<strong>Preprocessor</strong>, "`register_preprocessor`", '`PipelineBuilder.preprocess` via `"custom:name"`'],
+  ]}
+/>
+
+Each plugin type has a corresponding `list_custom_*` function for discovery and `unregister_*` function for removal.
+
+## Custom metrics
+
+A custom metric is a Python function that takes two strings and returns a float similarity score in `[0, 1]`.
+
+### Three calling conventions
+
+`register_metric` supports three ways to register:
+
+```python
+from reclink import register_metric
+
+# 1. Decorator with explicit name
+@register_metric("my_metric")
+def my_metric(a: str, b: str) -> float:
+    """Compare strings by shared first character."""
+    if not a or not b:
+        return 0.0
+    return 1.0 if a[0].lower() == b[0].lower() else 0.0
+
+# 2. Bare decorator (uses the function's __name__)
+@register_metric
+def initials_match(a: str, b: str) -> float:
+    """1.0 if both strings start with the same letter."""
+    if not a or not b:
+        return 0.0
+    return 1.0 if a[0].lower() == b[0].lower() else 0.0
+
+# 3. Direct call
+def vowel_ratio(a: str, b: str) -> float:
+    """Compare vowel-to-consonant ratios."""
+    def ratio(s: str) -> float:
+        vowels = sum(1 for c in s.lower() if c in "aeiou")
+        return vowels / len(s) if s else 0.0
+    return 1.0 - abs(ratio(a) - ratio(b))
+
+register_metric("vowel_ratio", vowel_ratio)
+```
+
+### Use custom metrics everywhere
+
+Once registered, your metric name works with every reclink function that accepts a `scorer` parameter:
+
+```python
+from reclink import cdist, match_best, match_batch
+
+# All-pairs similarity matrix
+matrix = cdist(["hello", "world"], ["help", "word"], scorer="my_metric")
+
+# Best match
+match_best("hello", ["help", "world", "hero"], scorer="initials_match")
+
+# Batch matching
+match_batch("hello", ["help", "world", "hero"], scorer="vowel_ratio", threshold=0.8)
+```
+
+### Complete example: nickname-aware metric
+
+```python
+from reclink import register_metric, jaro_winkler
+
+NICKNAMES = {
+    "bob": "robert", "rob": "robert", "bobby": "robert",
+    "bill": "william", "will": "william", "willy": "william",
+    "jim": "james", "jimmy": "james",
+    "jon": "john", "johnny": "john",
+    "mike": "michael", "mikey": "michael",
+    "tom": "thomas", "tommy": "thomas",
+    "dick": "richard", "rick": "richard", "rich": "richard",
+}
+
+@register_metric("nickname_aware")
+def nickname_aware(a: str, b: str) -> float:
+    """Jaro-Winkler with nickname expansion."""
+    a_lower, b_lower = a.lower(), b.lower()
+
+    # Expand nicknames to canonical forms
+    a_canonical = NICKNAMES.get(a_lower, a_lower)
+    b_canonical = NICKNAMES.get(b_lower, b_lower)
+
+    # Score both original and canonical, take the best
+    original_score = jaro_winkler(a_lower, b_lower)
+    canonical_score = jaro_winkler(a_canonical, b_canonical)
+    return max(original_score, canonical_score)
+
+# Now "Bob" matches "Robert" with high confidence
+from reclink import match_best
+match_best("Bob", ["Robert", "Jane", "William"], scorer="nickname_aware")
+# ("Robert", 1.0, 0)
+```
+
+## Custom blockers
+
+A custom blocker is an object with `block_dedup` and/or `block_link` methods that return candidate pairs.
+
+```python
+from reclink import register_blocker, Record
+
+class FirstLetterBlocker:
+    """Block records that share the same first letter of last_name."""
+
+    def block_dedup(self, records: list) -> list[tuple[int, int]]:
+        """Return candidate index pairs for deduplication."""
+        from collections import defaultdict
+        buckets: dict[str, list[int]] = defaultdict(list)
+
+        for i, rec in enumerate(records):
+            last_name = rec.get_field("last_name") or ""
+            if last_name:
+                key = last_name[0].lower()
+                buckets[key].append(i)
+
+        pairs = []
+        for indices in buckets.values():
+            for i in range(len(indices)):
+                for j in range(i + 1, len(indices)):
+                    pairs.append((indices[i], indices[j]))
+        return pairs
+
+    def block_link(
+        self, left: list, right: list
+    ) -> list[tuple[int, int]]:
+        """Return candidate (left_index, right_index) pairs for linkage."""
+        from collections import defaultdict
+        left_buckets: dict[str, list[int]] = defaultdict(list)
+        right_buckets: dict[str, list[int]] = defaultdict(list)
+
+        for i, rec in enumerate(left):
+            last_name = rec.get_field("last_name") or ""
+            if last_name:
+                left_buckets[last_name[0].lower()].append(i)
+
+        for j, rec in enumerate(right):
+            last_name = rec.get_field("last_name") or ""
+            if last_name:
+                right_buckets[last_name[0].lower()].append(j)
+
+        pairs = []
+        for key in left_buckets:
+            if key in right_buckets:
+                for i in left_buckets[key]:
+                    for j in right_buckets[key]:
+                        pairs.append((i, j))
+        return pairs
+
+register_blocker("first_letter", FirstLetterBlocker())
+```
+
+Use it in a pipeline:
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("last_name", ["fold_case"])
+    .block_custom("first_letter")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+```
+
+## Custom comparators
+
+A custom comparator is a function that takes two field values and returns a similarity score in `[0, 1]`.
+
+```python
+from reclink import register_comparator
+
+def email_domain_match(a: str, b: str) -> float:
+    """Score 1.0 if email domains match, 0.5 if TLDs match, 0.0 otherwise."""
+    def extract_domain(email: str) -> tuple[str, str]:
+        parts = email.lower().split("@")
+        if len(parts) != 2:
+            return ("", "")
+        domain = parts[1]
+        tld = domain.rsplit(".", 1)[-1] if "." in domain else ""
+        return (domain, tld)
+
+    domain_a, tld_a = extract_domain(a)
+    domain_b, tld_b = extract_domain(b)
+
+    if domain_a and domain_a == domain_b:
+        return 1.0
+    if tld_a and tld_a == tld_b:
+        return 0.5
+    return 0.0
+
+register_comparator("email_domain", email_domain_match)
+```
+
+Use it in a pipeline:
+
+```python
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("email", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .compare_custom("email", "email_domain")    # uses our custom comparator
+    .classify_threshold(0.80)
+    .build()
+)
+```
+
+## Custom classifiers
+
+A custom classifier takes a list of field scores and returns a `(score, class)` tuple where `class` is one of `"match"`, `"non_match"`, or `"possible"`.
+
+```python
+from reclink import register_classifier
+
+def strict_classifier(scores: list[float]) -> tuple[float, str]:
+    """Require ALL fields to score above 0.7, and average above 0.85."""
+    if not scores:
+        return (0.0, "non_match")
+
+    avg = sum(scores) / len(scores)
+    all_above_min = all(s >= 0.7 for s in scores)
+
+    if all_above_min and avg >= 0.85:
+        return (avg, "match")
+    elif avg >= 0.70:
+        return (avg, "possible")
+    else:
+        return (avg, "non_match")
+
+register_classifier("strict", strict_classifier)
+```
+
+Use it in a pipeline:
+
+```python
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("first_name", ["fold_case"])
+    .preprocess("last_name", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .compare_exact("city")
+    .classify_custom("strict")
+    .build()
+)
+```
+
+## Custom preprocessors
+
+A custom preprocessor is a function that takes a string and returns a transformed string.
+
+```python
+from reclink import register_preprocessor
+import re
+
+def strip_generation_suffix(s: str) -> str:
+    """Remove generational suffixes like Jr, Sr, III, IV."""
+    return re.sub(
+        r"\b(jr|sr|ii|iii|iv|v|2nd|3rd|4th|5th)\.?\b",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    ).strip()
+
+register_preprocessor("strip_generation", strip_generation_suffix)
+```
+
+Reference custom preprocessors using the `"custom:name"` prefix in pipeline preprocessing:
+
+```python
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("last_name", [
+        "fold_case",
+        "custom:strip_generation",   # our custom preprocessor
+        "normalize_whitespace",
+    ])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("last_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+```
+
+## Managing plugins
+
+### List registered plugins
+
+```python
+from reclink import (
+    list_custom_metrics,
+    list_custom_blockers,
+    list_custom_comparators,
+    list_custom_classifiers,
+    list_custom_preprocessors,
+)
+
+print(list_custom_metrics())        # ["nickname_aware", "my_metric", "vowel_ratio", ...]
+print(list_custom_blockers())       # ["first_letter"]
+print(list_custom_comparators())    # ["email_domain"]
+print(list_custom_classifiers())    # ["strict"]
+print(list_custom_preprocessors())  # ["strip_generation"]
+```
+
+### Unregister plugins
+
+```python
+from reclink import (
+    unregister_metric,
+    unregister_blocker,
+    unregister_comparator,
+    unregister_classifier,
+    unregister_preprocessor,
+)
+
+unregister_metric("my_metric")            # returns True if found
+unregister_blocker("first_letter")        # returns True if found
+unregister_comparator("email_domain")     # returns True if found
+unregister_classifier("strict")           # returns True if found
+unregister_preprocessor("strip_generation")  # returns True if found
+```
+
+## Performance note: the GIL
+
+:::caution Custom plugins acquire the GIL
+Every call to a custom Python plugin requires acquiring the Python Global Interpreter Lock (GIL). For built-in Rust metrics, reclink releases the GIL and runs comparisons in parallel across all CPU cores via Rayon.
+
+Custom plugins **cannot** run in parallel. On hot paths (e.g., `cdist` over millions of pairs), a custom metric can be 10-50x slower than the equivalent built-in metric.
+:::
+
+**Recommendations:**
+
+1. **Prototype with custom plugins, deploy with built-in.** Use a custom metric to validate your approach, then see if a combination of built-in metrics and preprocessing achieves the same result.
+2. **Keep custom blockers lean.** Blocking runs once per dedup call, so even a Python blocker is usually fine. The comparison step is the hot path.
+3. **Use custom preprocessors freely.** Preprocessing runs once per field per record -- the per-record overhead is negligible.
+4. **Avoid custom classifiers in tight loops.** Classification runs once per candidate pair (after blocking), so the impact is moderate. But for very large candidate sets, prefer `classify_threshold` or `classify_fellegi_sunter_auto`.
+
+## Complete working example
+
+Putting it all together -- a pipeline with custom plugins for every stage:
+
+```python
+import pandas as pd
+from reclink import (
+    register_metric,
+    register_blocker,
+    register_comparator,
+    register_classifier,
+    register_preprocessor,
+    jaro_winkler,
+)
+from reclink.pipeline import ReclinkPipeline
+
+# --- Custom preprocessor ---
+import re
+
+@register_preprocessor.__wrapped__ if hasattr(register_preprocessor, '__wrapped__') else None
+def _(): pass  # placeholder, we use direct call below
+
+register_preprocessor("normalize_phone", lambda s: re.sub(r"[^0-9]", "", s))
+
+# --- Custom metric ---
+NICKNAMES = {"bob": "robert", "rob": "robert", "jim": "james", "jon": "john"}
+
+@register_metric("nickname_jw")
+def nickname_jw(a: str, b: str) -> float:
+    a_low, b_low = a.lower(), b.lower()
+    a_canon = NICKNAMES.get(a_low, a_low)
+    b_canon = NICKNAMES.get(b_low, b_low)
+    return max(jaro_winkler(a_low, b_low), jaro_winkler(a_canon, b_canon))
+
+# --- Custom comparator ---
+def phone_compare(a: str, b: str) -> float:
+    a_digits = re.sub(r"[^0-9]", "", a)
+    b_digits = re.sub(r"[^0-9]", "", b)
+    if not a_digits or not b_digits:
+        return 0.0
+    if a_digits == b_digits:
+        return 1.0
+    # Check if one is a suffix of the other (country code difference)
+    if a_digits.endswith(b_digits) or b_digits.endswith(a_digits):
+        return 0.9
+    return 0.0
+
+register_comparator("phone", phone_compare)
+
+# --- Custom classifier ---
+def business_classifier(scores: list[float]) -> tuple[float, str]:
+    avg = sum(scores) / len(scores) if scores else 0.0
+    if avg >= 0.90:
+        return (avg, "match")
+    elif avg >= 0.75:
+        return (avg, "possible")
+    return (avg, "non_match")
+
+register_classifier("business", business_classifier)
+
+# --- Build pipeline ---
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("first_name", ["fold_case", "strip_punctuation"])
+    .preprocess("last_name", ["fold_case"])
+    .block_phonetic("last_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .compare_string("last_name", metric="jaro_winkler")
+    .compare_custom("phone", "phone")
+    .classify_custom("business")
+    .build()
+)
+
+# --- Run ---
+df = pd.DataFrame({
+    "id":         ["1",    "2",     "3"],
+    "first_name": ["Jon",  "John",  "Jane"],
+    "last_name":  ["Smith","Smith", "Doe"],
+    "phone":      ["(555) 123-4567", "555-123-4567", "555-999-0000"],
+})
+
+matches = pipeline.dedup(df)
+print(matches)
+```
+
+## Next steps
+
+- **[Name Matching](./name-matching)** -- Pre-built strategies for person-name matching
+- **[Dataset Deduplication](./deduplication)** -- Full dedup walkthrough with built-in components
+- **[Performance Optimization](./performance)** -- Understanding the GIL cost of custom plugins
+- **[Pipeline API](/docs/api/pipeline)** -- All builder methods including `block_custom`, `compare_custom`, `classify_custom`
+- **[Batch Operations API](/docs/api/batch-operations)** -- `cdist`, `match_best`, `match_batch` with custom scorers

@@ -1,0 +1,185 @@
+---
+sidebar_position: 9
+title: Export
+description: Write match results and cluster groups to CSV or JSON files.
+---
+
+# Export
+
+The `reclink.export` module provides lightweight helpers for persisting match results and cluster assignments to disk. All functions use the Python standard library only -- no extra dependencies required.
+
+```python
+from reclink.export import (
+    export_matches_csv,
+    export_matches_json,
+    export_clusters_csv,
+    export_clusters_json,
+)
+```
+
+:::tip Input flexibility
+Every export function accepts a plain `list[dict]`, a Pandas DataFrame, or a Polars DataFrame. The format is detected automatically so you can pass pipeline output directly.
+:::
+
+---
+
+## Match Export
+
+Match results are rows containing `left_id`, `right_id`, `score`, and an optional `scores` list of per-field scores.
+
+### `export_matches_csv(results, path)`
+
+Write match results to a CSV file. The `scores` list is serialized as a semicolon-delimited string.
+
+```python
+from reclink.export import export_matches_csv
+
+matches = [
+    {"left_id": "0", "right_id": "3", "score": 0.92, "scores": [0.95, 0.88]},
+    {"left_id": "1", "right_id": "4", "score": 0.87, "scores": [0.90, 0.84]},
+]
+
+export_matches_csv(matches, "matches.csv")
+```
+
+The resulting CSV:
+
+```csv
+left_id,right_id,score,scores
+0,3,0.92,0.95;0.88
+1,4,0.87,0.9;0.84
+```
+
+### `export_matches_json(results, path)`
+
+Write match results to a JSON file with 2-space indentation.
+
+```python
+from reclink.export import export_matches_json
+
+export_matches_json(matches, "matches.json")
+```
+
+The resulting JSON:
+
+```json
+[
+  {
+    "left_id": "0",
+    "right_id": "3",
+    "score": 0.92,
+    "scores": [0.95, 0.88]
+  }
+]
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`results`", "`list[dict]`, `pd.DataFrame`, or `pl.DataFrame`", <em>required</em>, "Match results. Each row must contain `left_id`, `right_id`, and `score` keys. An optional `scores` list holds per-field scores."],
+    ["`path`", "`str` or `Path`", <em>required</em>, "Output file path. Parent directories must exist."],
+  ]}
+/>
+
+---
+
+## Cluster Export
+
+Cluster data can be either a list of groups (each group is a list of record IDs) or a DataFrame with `cluster_id` and `record_id` columns.
+
+### `export_clusters_csv(clusters, path)`
+
+Write cluster assignments to CSV with `cluster_id` and `record_id` columns. When given a list of groups, cluster IDs are assigned sequentially starting from 0.
+
+```python
+from reclink.export import export_clusters_csv
+
+clusters = [
+    ["rec_0", "rec_3", "rec_7"],   # cluster 0
+    ["rec_1", "rec_4"],            # cluster 1
+]
+
+export_clusters_csv(clusters, "clusters.csv")
+```
+
+The resulting CSV:
+
+```csv
+cluster_id,record_id
+0,rec_0
+0,rec_3
+0,rec_7
+1,rec_1
+1,rec_4
+```
+
+### `export_clusters_json(clusters, path)`
+
+Write cluster assignments to JSON. Each entry is an object with `cluster_id` and `record_id` fields.
+
+```python
+from reclink.export import export_clusters_json
+
+export_clusters_json(clusters, "clusters.json")
+```
+
+The resulting JSON:
+
+```json
+[
+  {"cluster_id": 0, "record_id": "rec_0"},
+  {"cluster_id": 0, "record_id": "rec_3"},
+  {"cluster_id": 0, "record_id": "rec_7"},
+  {"cluster_id": 1, "record_id": "rec_1"},
+  {"cluster_id": 1, "record_id": "rec_4"}
+]
+```
+
+### Parameters
+
+<Table
+  columns={["Parameter", "Type", "Default", "Description"]}
+  rows={[
+    ["`clusters`", "`list[list[str]]`, `pd.DataFrame`, or `pl.DataFrame`", <em>required</em>, "Cluster groups. Lists are auto-indexed; DataFrames must contain `cluster_id` and `record_id` columns."],
+    ["`path`", "`str` or `Path`", <em>required</em>, "Output file path. Parent directories must exist."],
+  ]}
+/>
+
+---
+
+## End-to-End Example
+
+A typical workflow: run a deduplication pipeline, then export both matches and clusters.
+
+```python
+import reclink
+from reclink.pipeline import ReclinkPipeline
+from reclink.export import export_matches_csv, export_clusters_json
+
+# Build and run a dedup pipeline
+pipeline = (
+    ReclinkPipeline.builder()
+    .preprocess("name", ["fold_case", "normalize_whitespace"])
+    .compare_string("name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+matches = pipeline.dedup(data, id_column="id")
+
+# Export match pairs
+export_matches_csv(matches, "output/matches.csv")
+
+# Cluster and export
+clusters = pipeline.dedup_cluster(data, id_column="id")
+export_clusters_json(clusters, "output/clusters.json")
+```
+
+---
+
+## See Also
+
+- **[Pipeline](./pipeline)** -- build record linkage pipelines that produce match results
+- **[Evaluation](./evaluation)** -- measure precision, recall, and F1 of your matches
+- **[CLI Reference](./cli)** -- export results directly from the command line
