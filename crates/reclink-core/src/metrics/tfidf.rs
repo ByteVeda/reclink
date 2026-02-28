@@ -29,7 +29,10 @@ impl TfIdfMatcher {
 
         for doc in corpus {
             let unique_tokens: AHashSet<String> =
-                doc.split_whitespace().map(|t| t.to_lowercase()).collect();
+                crate::preprocess::tokenize::tokenize_for_matching(doc)
+                    .into_iter()
+                    .map(|t| t.to_lowercase())
+                    .collect();
             for token in unique_tokens {
                 *df.entry(token).or_insert(0) += 1;
             }
@@ -90,7 +93,10 @@ impl TfIdfMatcher {
     }
 
     fn tfidf_vector(&self, s: &str) -> AHashMap<String, f64> {
-        let tokens: Vec<String> = s.split_whitespace().map(|t| t.to_lowercase()).collect();
+        let tokens: Vec<String> = crate::preprocess::tokenize::tokenize_for_matching(s)
+            .into_iter()
+            .map(|t| t.to_lowercase())
+            .collect();
         let n_tokens = tokens.len() as f64;
 
         if n_tokens == 0.0 {

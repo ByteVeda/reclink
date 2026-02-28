@@ -37,6 +37,18 @@ impl Classifier for ThresholdClassifier {
             },
         }
     }
+
+    fn can_reject_early(&self, partial_scores: &[f64], total_comparators: usize) -> bool {
+        if total_comparators == 0 {
+            return false;
+        }
+        // Best case: all remaining comparators score 1.0
+        let current_sum: f64 = partial_scores.iter().sum();
+        let evaluated = partial_scores.iter().filter(|&&s| s > 0.0).count();
+        let remaining = total_comparators - evaluated;
+        let best_case_avg = (current_sum + remaining as f64) / total_comparators as f64;
+        best_case_avg < self.threshold
+    }
 }
 
 /// Classifies pairs into three bands using average score:

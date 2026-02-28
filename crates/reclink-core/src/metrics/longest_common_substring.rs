@@ -1,4 +1,6 @@
 //! Longest Common Substring metric.
+//!
+//! Uses O(m*n) DP with single-row space optimization: O(min(m,n)) space.
 
 use crate::metrics::SimilarityMetric;
 
@@ -27,14 +29,22 @@ pub fn longest_common_substring_length(a: &str, b: &str) -> usize {
         return 0;
     }
 
-    let mut prev = vec![0usize; b_len + 1];
+    // Use shorter string as column dimension for less memory
+    let (row_chars, col_chars) = if a_len >= b_len {
+        (&a_chars[..], &b_chars[..])
+    } else {
+        (&b_chars[..], &a_chars[..])
+    };
+
+    let cols = col_chars.len();
+    let mut prev = vec![0usize; cols + 1];
     let mut max_len = 0;
 
-    for i in 1..=a_len {
+    for rc in row_chars {
         let mut prev_diag = 0;
-        for j in 1..=b_len {
+        for j in 1..=cols {
             let old = prev[j];
-            if a_chars[i - 1] == b_chars[j - 1] {
+            if *rc == col_chars[j - 1] {
                 prev[j] = prev_diag + 1;
                 max_len = max_len.max(prev[j]);
             } else {

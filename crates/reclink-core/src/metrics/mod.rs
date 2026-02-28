@@ -6,6 +6,9 @@
 //!
 //! All algorithms are implemented from scratch with buffer reuse for batch operations.
 
+pub(crate) mod scratch;
+pub mod simd_util;
+
 pub mod alignment;
 pub mod batch;
 pub mod composite;
@@ -30,7 +33,7 @@ pub mod token_set;
 pub mod token_sort;
 pub mod weighted_levenshtein;
 
-pub use batch::{match_batch, match_best, MatchResult};
+pub use batch::{cdist_columnar, match_batch, match_best, ColumnarCdist, MatchResult};
 pub use composite::CompositeScorer;
 pub use cosine::Cosine;
 pub use damerau_levenshtein::DamerauLevenshtein;
@@ -44,6 +47,7 @@ pub use longest_common_substring::LongestCommonSubstring;
 pub use ngram_similarity::NgramSimilarity;
 pub use partial_ratio::PartialRatio;
 pub use phonetic_hybrid::PhoneticHybrid;
+pub use simd_util::AlignedVec;
 pub use smith_waterman::SmithWaterman;
 pub use sorensen_dice::SorensenDice;
 pub use streaming::StreamingMatcher;

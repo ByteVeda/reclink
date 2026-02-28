@@ -159,9 +159,8 @@ pub fn phonetic_batch_arrow(
         }
     };
 
-    let result: Vec<String> = py.allow_threads(|| {
-        strings.par_iter().map(|s| encoder.encode(s)).collect()
-    });
+    let result: Vec<String> =
+        py.allow_threads(|| strings.par_iter().map(|s| encoder.encode(s)).collect());
 
     Ok(result)
 }

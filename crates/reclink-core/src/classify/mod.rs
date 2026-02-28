@@ -1,10 +1,12 @@
 //! Classifiers for turning comparison vectors into match/non-match decisions.
 
+pub mod custom;
 mod em;
 mod fellegi_sunter;
 mod threshold;
 mod weighted;
 
+pub use custom::*;
 pub use em::*;
 pub use fellegi_sunter::FellegiSunterClassifier;
 pub use threshold::{ThresholdBandsClassifier, ThresholdClassifier};
@@ -16,4 +18,13 @@ use crate::record::{ClassifiedPair, ComparisonVector};
 pub trait Classifier: Send + Sync {
     /// Classifies a comparison vector into a match decision.
     fn classify(&self, vector: &ComparisonVector) -> ClassifiedPair;
+
+    /// Returns `true` if the classifier can definitively reject this pair
+    /// based on partial scores (remaining scores are assumed to be 0.0).
+    ///
+    /// `partial_scores` has the same length as `total_comparators`; already-computed
+    /// positions contain real scores, positions not yet evaluated contain 0.0.
+    fn can_reject_early(&self, _partial_scores: &[f64], _total_comparators: usize) -> bool {
+        false
+    }
 }

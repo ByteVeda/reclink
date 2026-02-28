@@ -25,8 +25,10 @@ impl SimilarityMetric for TokenSet {
 /// - combined_a vs combined_b
 #[must_use]
 pub fn token_set_ratio(a: &str, b: &str) -> f64 {
-    let tokens_a: BTreeSet<&str> = a.split_whitespace().collect();
-    let tokens_b: BTreeSet<&str> = b.split_whitespace().collect();
+    let owned_a = crate::preprocess::tokenize::tokenize_for_matching(a);
+    let owned_b = crate::preprocess::tokenize::tokenize_for_matching(b);
+    let tokens_a: BTreeSet<&str> = owned_a.iter().map(|s| s.as_str()).collect();
+    let tokens_b: BTreeSet<&str> = owned_b.iter().map(|s| s.as_str()).collect();
 
     if tokens_a.is_empty() && tokens_b.is_empty() {
         return 1.0;

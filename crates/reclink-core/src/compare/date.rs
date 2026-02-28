@@ -24,6 +24,14 @@ impl FieldComparator for DateComparator {
         &self.field
     }
 
+    fn estimated_cost(&self) -> u32 {
+        5
+    }
+
+    fn selectivity_hint(&self) -> f64 {
+        4.0
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         let a_str = match a {
             FieldValue::Date(d) => d.as_str(),

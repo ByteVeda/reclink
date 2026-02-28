@@ -27,6 +27,33 @@ impl FieldComparator for StringComparator {
         &self.field
     }
 
+    fn selectivity_hint(&self) -> f64 {
+        1.5
+    }
+
+    fn estimated_cost(&self) -> u32 {
+        match &self.metric {
+            Metric::Hamming(_) => 10,
+            Metric::Jaro(_) => 20,
+            Metric::JaroWinkler(_) => 20,
+            Metric::Cosine(_) => 30,
+            Metric::Jaccard(_) => 30,
+            Metric::SorensenDice(_) => 30,
+            Metric::Levenshtein(_) => 50,
+            Metric::DamerauLevenshtein(_) => 50,
+            Metric::WeightedLevenshtein(_) => 60,
+            Metric::TokenSort(_) => 70,
+            Metric::TokenSet(_) => 80,
+            Metric::PartialRatio(_) => 80,
+            Metric::Lcs(_) => 50,
+            Metric::LongestCommonSubstring(_) => 50,
+            Metric::NgramSimilarity(_) => 40,
+            Metric::SmithWaterman(_) => 150,
+            Metric::PhoneticHybrid(_) => 100,
+            Metric::Custom { .. } => 100,
+        }
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         match (a.as_text(), b.as_text()) {
             (Some(a), Some(b)) => self.metric.similarity(a, b),

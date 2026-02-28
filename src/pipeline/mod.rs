@@ -259,6 +259,19 @@ impl PyPipeline {
         });
     }
 
+    fn block_custom(&mut self, name: String) {
+        self.blockers.push(PyBlockerConfig::Custom { name });
+    }
+
+    fn compare_custom(&mut self, field: String, name: String) {
+        self.comparators
+            .push(PyComparatorConfig::Custom { field, name });
+    }
+
+    fn classify_custom(&mut self, name: String) {
+        self.classifier = Some(PyClassifierConfig::Custom { name });
+    }
+
     fn classify_threshold(&mut self, threshold: f64) {
         self.classifier = Some(PyClassifierConfig::Threshold { threshold });
     }
@@ -444,8 +457,7 @@ impl PyPipeline {
                         let blocking_ns = t1.elapsed().as_nanos() as u64;
 
                         let t2 = Instant::now();
-                        let vectors =
-                            compare_pairs(&comparators, &batch, &batch, &candidates);
+                        let vectors = compare_pairs(&comparators, &batch, &batch, &candidates);
                         let comparison_ns = t2.elapsed().as_nanos() as u64;
 
                         let t3 = Instant::now();
@@ -456,10 +468,8 @@ impl PyPipeline {
                             convergence_threshold,
                             initial_p_match,
                         };
-                        let em_result = reclink_core::classify::estimate_fellegi_sunter(
-                            &raw_vectors,
-                            &config,
-                        );
+                        let em_result =
+                            reclink_core::classify::estimate_fellegi_sunter(&raw_vectors, &config);
 
                         let classifier = reclink_core::classify::FellegiSunterClassifier::new(
                             em_result.m_probs,
@@ -482,8 +492,7 @@ impl PyPipeline {
                     });
 
                 if profiling {
-                    self.profiling_stats
-                        .insert("blocking".into(), blocking_ns);
+                    self.profiling_stats.insert("blocking".into(), blocking_ns);
                     self.profiling_stats
                         .insert("comparison".into(), comparison_ns);
                     self.profiling_stats
@@ -554,8 +563,7 @@ impl PyPipeline {
 
                 let clusters = py.allow_threads(|| {
                     let candidates = generate_dedup_candidates(&blockers, &batch);
-                    let vectors =
-                        compare_pairs(&comparators, &batch, &batch, &candidates);
+                    let vectors = compare_pairs(&comparators, &batch, &batch, &candidates);
 
                     let raw_vectors: Vec<Vec<f64>> =
                         vectors.iter().map(|v| v.scores.clone()).collect();
@@ -564,10 +572,8 @@ impl PyPipeline {
                         convergence_threshold,
                         initial_p_match,
                     };
-                    let em_result = reclink_core::classify::estimate_fellegi_sunter(
-                        &raw_vectors,
-                        &config,
-                    );
+                    let em_result =
+                        reclink_core::classify::estimate_fellegi_sunter(&raw_vectors, &config);
 
                     let classifier = reclink_core::classify::FellegiSunterClassifier::new(
                         em_result.m_probs,
@@ -638,8 +644,7 @@ impl PyPipeline {
                 let comparators = self.build_comparators()?;
 
                 let matches = py.allow_threads(|| {
-                    let candidates =
-                        generate_link_candidates(&blockers, &left_batch, &right_batch);
+                    let candidates = generate_link_candidates(&blockers, &left_batch, &right_batch);
                     let vectors =
                         compare_pairs(&comparators, &left_batch, &right_batch, &candidates);
 
@@ -650,10 +655,8 @@ impl PyPipeline {
                         convergence_threshold,
                         initial_p_match,
                     };
-                    let em_result = reclink_core::classify::estimate_fellegi_sunter(
-                        &raw_vectors,
-                        &config,
-                    );
+                    let em_result =
+                        reclink_core::classify::estimate_fellegi_sunter(&raw_vectors, &config);
 
                     let classifier = reclink_core::classify::FellegiSunterClassifier::new(
                         em_result.m_probs,
@@ -685,8 +688,7 @@ impl PyPipeline {
             }
             _ => {
                 let pipeline = self.build_pipeline()?;
-                let matches =
-                    py.allow_threads(|| pipeline.link(&left_batch, &right_batch));
+                let matches = py.allow_threads(|| pipeline.link(&left_batch, &right_batch));
                 Ok(matches
                     .into_iter()
                     .map(|m| PyMatchResult {

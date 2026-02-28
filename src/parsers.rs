@@ -38,6 +38,45 @@ pub fn parse_preprocess_ops(names: &[String]) -> PyResult<Vec<preprocess::Prepro
             "transliterate_greek" => Ok(preprocess::PreprocessOp::Transliterate(
                 preprocess::transliterate::Script::Greek,
             )),
+            "transliterate_arabic" => Ok(preprocess::PreprocessOp::Transliterate(
+                preprocess::transliterate::Script::Arabic,
+            )),
+            "transliterate_hebrew" => Ok(preprocess::PreprocessOp::Transliterate(
+                preprocess::transliterate::Script::Hebrew,
+            )),
+            "transliterate_devanagari" => Ok(preprocess::PreprocessOp::Transliterate(
+                preprocess::transliterate::Script::Devanagari,
+            )),
+            "transliterate_hangul" => Ok(preprocess::PreprocessOp::Transliterate(
+                preprocess::transliterate::Script::Hangul,
+            )),
+            "strip_arabic_diacritics" => Ok(preprocess::PreprocessOp::StripArabicDiacritics),
+            "strip_hebrew_diacritics" => Ok(preprocess::PreprocessOp::StripHebrewDiacritics),
+            "normalize_arabic" => Ok(preprocess::PreprocessOp::NormalizeArabic),
+            "strip_bidi_marks" => Ok(preprocess::PreprocessOp::StripBidiMarks),
+            "fold_case_turkish" => Ok(preprocess::PreprocessOp::FoldCaseLocale(
+                preprocess::CaseFoldLocale::Turkish,
+            )),
+            other if other.starts_with("cjk_ngram_tokenize_") => {
+                let n_str = &other["cjk_ngram_tokenize_".len()..];
+                let n: usize = n_str.parse().map_err(|_| {
+                    PyValueError::new_err(format!(
+                        "cjk_ngram_tokenize: invalid n-gram size: {n_str}"
+                    ))
+                })?;
+                Ok(preprocess::PreprocessOp::CjkNgramTokenize { n })
+            }
+            other if other.starts_with("custom:") => {
+                let custom_name = &other["custom:".len()..];
+                if custom_name.is_empty() {
+                    return Err(PyValueError::new_err(
+                        "custom preprocessor format: 'custom:<name>'",
+                    ));
+                }
+                Ok(preprocess::PreprocessOp::Custom {
+                    name: custom_name.to_string(),
+                })
+            }
             other if other.starts_with("synonym_expand:") => {
                 let json = &other["synonym_expand:".len()..];
                 let map: std::collections::HashMap<String, String> = serde_json::from_str(json)
@@ -67,6 +106,10 @@ pub fn parse_preprocess_ops(names: &[String]) -> PyResult<Vec<preprocess::Prepro
                  clean_name, clean_address, clean_company, \
                  normalize_email, normalize_url, \
                  transliterate_cyrillic, transliterate_greek, \
+                 transliterate_arabic, transliterate_hebrew, \
+                 transliterate_devanagari, transliterate_hangul, \
+                 strip_arabic_diacritics, strip_hebrew_diacritics, \
+                 normalize_arabic, strip_bidi_marks, \
                  synonym_expand:{{\"key\":\"value\"}}, \
                  regex_replace:<pattern>:<replacement>"
             ))),

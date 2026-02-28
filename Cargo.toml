@@ -14,7 +14,7 @@ name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-reclink-core = { path = "crates/reclink-core" }
+reclink-core = { path = "crates/reclink-core", features = ["streaming-backpressure"] }
 pyo3 = { version = "0.24", features = ["extension-module"] }
 numpy = "0.24"
 rayon = "1.11"

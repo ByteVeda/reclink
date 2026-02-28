@@ -10,6 +10,7 @@ mod metrics;
 mod parsers;
 mod phonetic;
 mod pipeline;
+mod plugins;
 #[cfg(feature = "polars-plugin")]
 mod polars_plugin;
 mod preprocess;
@@ -26,6 +27,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     index::register(m)?;
     scoring::register(m)?;
     pipeline::register(m)?;
+    plugins::register(m)?;
     arrow_interop::register(m)?;
     Ok(())
 }

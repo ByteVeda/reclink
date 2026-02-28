@@ -40,6 +40,10 @@ pub enum PyBlockerConfig {
         min_prefix_len: usize,
         max_frequency: usize,
     },
+    #[serde(skip)]
+    Custom {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -51,11 +55,29 @@ pub enum PyClusterConfig {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PyComparatorConfig {
-    String { field: String, metric: String },
-    Exact { field: String },
-    Numeric { field: String, max_diff: f64 },
-    Date { field: String },
-    Phonetic { field: String, algorithm: String },
+    String {
+        field: String,
+        metric: String,
+    },
+    Exact {
+        field: String,
+    },
+    Numeric {
+        field: String,
+        max_diff: f64,
+    },
+    Date {
+        field: String,
+    },
+    Phonetic {
+        field: String,
+        algorithm: String,
+    },
+    #[serde(skip)]
+    Custom {
+        field: String,
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -86,6 +108,10 @@ pub enum PyClassifierConfig {
         weights: Vec<f64>,
         upper: f64,
         lower: f64,
+    },
+    #[serde(skip)]
+    Custom {
+        name: String,
     },
 }
 

@@ -15,8 +15,11 @@ impl SimilarityMetric for TokenSort {
 }
 
 /// Sorts tokens and joins with a single space.
+///
+/// CJK-aware: uses [`tokenize_for_matching`] so CJK characters are treated as
+/// individual tokens.
 fn sort_tokens(s: &str) -> String {
-    let mut tokens: Vec<&str> = s.split_whitespace().collect();
+    let mut tokens = crate::preprocess::tokenize::tokenize_for_matching(s);
     tokens.sort_unstable();
     tokens.join(" ")
 }

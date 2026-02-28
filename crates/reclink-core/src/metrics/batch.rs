@@ -64,6 +64,58 @@ pub fn match_best(
     best.filter(|r| threshold.is_none_or(|t| r.score >= t))
 }
 
+/// A row-major similarity matrix from an all-pairs comparison.
+#[derive(Debug, Clone)]
+pub struct ColumnarCdist {
+    /// Flat row-major score buffer: `scores[i * n_cols + j]` = similarity(queries[i], candidates[j]).
+    pub scores: Vec<f64>,
+    /// Number of query strings (rows).
+    pub n_rows: usize,
+    /// Number of candidate strings (columns).
+    pub n_cols: usize,
+}
+
+impl ColumnarCdist {
+    /// Returns the similarity score for `(row, col)`.
+    #[must_use]
+    pub fn get(&self, row: usize, col: usize) -> f64 {
+        self.scores[row * self.n_cols + col]
+    }
+}
+
+/// Computes an all-pairs similarity matrix in a flat row-major layout.
+///
+/// Uses Rayon to parallelise over query rows.
+#[must_use]
+pub fn cdist_columnar(queries: &[&str], candidates: &[&str], metric: &Metric) -> ColumnarCdist {
+    let n_rows = queries.len();
+    let n_cols = candidates.len();
+
+    if n_rows == 0 || n_cols == 0 {
+        return ColumnarCdist {
+            scores: Vec::new(),
+            n_rows,
+            n_cols,
+        };
+    }
+
+    let scores: Vec<f64> = queries
+        .par_iter()
+        .flat_map(|q| {
+            candidates
+                .iter()
+                .map(|c| metric.similarity(q, c))
+                .collect::<Vec<f64>>()
+        })
+        .collect();
+
+    ColumnarCdist {
+        scores,
+        n_rows,
+        n_cols,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +167,41 @@ mod tests {
         let results = match_batch("hello", &candidates, &metric, Some(0.5));
         // "xyz" should be filtered out
         assert!(results.iter().all(|r| r.score >= 0.5));
+    }
+
+    #[test]
+    fn cdist_columnar_identity() {
+        let metric = metric_from_name("jaro_winkler").unwrap();
+        let strings = vec!["hello", "world"];
+        let result = cdist_columnar(&strings, &strings, &metric);
+        assert_eq!(result.n_rows, 2);
+        assert_eq!(result.n_cols, 2);
+        assert!((result.get(0, 0) - 1.0).abs() < 1e-10);
+        assert!((result.get(1, 1) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn cdist_columnar_dimensions() {
+        let metric = metric_from_name("jaro_winkler").unwrap();
+        let queries = vec!["a", "b", "c"];
+        let candidates = vec!["x", "y"];
+        let result = cdist_columnar(&queries, &candidates, &metric);
+        assert_eq!(result.n_rows, 3);
+        assert_eq!(result.n_cols, 2);
+        assert_eq!(result.scores.len(), 6);
+    }
+
+    #[test]
+    fn cdist_columnar_empty() {
+        let metric = metric_from_name("jaro_winkler").unwrap();
+        let empty: Vec<&str> = vec![];
+        let result = cdist_columnar(&empty, &["hello"], &metric);
+        assert_eq!(result.n_rows, 0);
+        assert!(result.scores.is_empty());
+
+        let result2 = cdist_columnar(&["hello"], &empty, &metric);
+        assert_eq!(result2.n_cols, 0);
+        assert!(result2.scores.is_empty());
     }
 
     #[test]

@@ -18,18 +18,26 @@ pub fn ngram_tokenize(s: &str, n: usize) -> Vec<String> {
 
 /// Returns `true` if a character is in a CJK code block.
 ///
-/// Covers CJK Unified Ideographs, Extension A, Compatibility Ideographs,
-/// Katakana, Hiragana, and Hangul Syllables.
+/// Covers CJK Unified Ideographs, Extensions A-G, Compatibility Ideographs,
+/// Katakana, Hiragana, Hangul Syllables, Hangul Jamo, Bopomofo, Kangxi Radicals,
+/// and CJK Compatibility (Enclosed).
 #[inline]
 #[must_use]
 pub fn is_cjk(ch: char) -> bool {
     matches!(ch,
-        '\u{4E00}'..='\u{9FFF}'   // CJK Unified Ideographs
-        | '\u{3400}'..='\u{4DBF}' // CJK Extension A
-        | '\u{F900}'..='\u{FAFF}' // CJK Compatibility Ideographs
-        | '\u{30A0}'..='\u{30FF}' // Katakana
-        | '\u{3040}'..='\u{309F}' // Hiragana
-        | '\u{AC00}'..='\u{D7AF}' // Hangul Syllables
+        '\u{4E00}'..='\u{9FFF}'     // CJK Unified Ideographs
+        | '\u{3400}'..='\u{4DBF}'   // CJK Extension A
+        | '\u{F900}'..='\u{FAFF}'   // CJK Compatibility Ideographs
+        | '\u{30A0}'..='\u{30FF}'   // Katakana
+        | '\u{3040}'..='\u{309F}'   // Hiragana
+        | '\u{AC00}'..='\u{D7AF}'   // Hangul Syllables
+        | '\u{1100}'..='\u{11FF}'   // Hangul Jamo
+        | '\u{3100}'..='\u{312F}'   // Bopomofo
+        | '\u{20000}'..='\u{2A6DF}' // CJK Extension B
+        | '\u{2A700}'..='\u{2CEAF}' // CJK Extensions C-F
+        | '\u{30000}'..='\u{323AF}' // CJK Extension G
+        | '\u{3200}'..='\u{32FF}'   // CJK Compatibility (Enclosed)
+        | '\u{2F00}'..='\u{2FDF}'   // Kangxi Radicals
     )
 }
 
@@ -77,6 +85,100 @@ pub fn smart_tokenize(s: &str) -> Vec<String> {
     }
 
     tokens
+}
+
+/// Generates character n-grams from CJK text.
+///
+/// Unlike [`ngram_tokenize`] which works on arbitrary strings,
+/// this operates on the CJK characters in the input, ignoring non-CJK chars.
+#[must_use]
+pub fn cjk_ngram_tokenize(s: &str, n: usize) -> Vec<String> {
+    let cjk_chars: Vec<char> = s.chars().filter(|c| is_cjk(*c)).collect();
+    if cjk_chars.len() < n || n == 0 {
+        return Vec::new();
+    }
+    cjk_chars.windows(n).map(|w| w.iter().collect()).collect()
+}
+
+/// Smart n-gram tokenizer for mixed CJK/Latin text.
+///
+/// CJK characters are tokenized into character n-grams of size `n`.
+/// Latin runs are split on whitespace and kept as whole tokens.
+#[must_use]
+pub fn smart_tokenize_ngram(s: &str, n: usize) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut latin_buf = String::new();
+    let mut cjk_buf = Vec::new();
+
+    for ch in s.chars() {
+        if is_cjk(ch) {
+            // Flush Latin buffer
+            if !latin_buf.is_empty() {
+                for tok in latin_buf.split_whitespace() {
+                    tokens.push(tok.to_string());
+                }
+                latin_buf.clear();
+            }
+            cjk_buf.push(ch);
+        } else {
+            // Flush CJK buffer as n-grams
+            if !cjk_buf.is_empty() {
+                if cjk_buf.len() >= n && n > 0 {
+                    for w in cjk_buf.windows(n) {
+                        tokens.push(w.iter().collect());
+                    }
+                } else {
+                    for &c in &cjk_buf {
+                        tokens.push(c.to_string());
+                    }
+                }
+                cjk_buf.clear();
+            }
+            latin_buf.push(ch);
+        }
+    }
+
+    // Flush remaining buffers
+    if !cjk_buf.is_empty() {
+        if cjk_buf.len() >= n && n > 0 {
+            for w in cjk_buf.windows(n) {
+                tokens.push(w.iter().collect());
+            }
+        } else {
+            for &c in &cjk_buf {
+                tokens.push(c.to_string());
+            }
+        }
+    }
+    if !latin_buf.is_empty() {
+        for tok in latin_buf.split_whitespace() {
+            tokens.push(tok.to_string());
+        }
+    }
+
+    tokens
+}
+
+/// Tokenizes using a named custom tokenizer, or falls back to [`tokenize_for_matching`].
+///
+/// # Errors
+///
+/// Returns an error if `name` is not registered in the custom tokenizer registry.
+pub fn tokenize_with_custom(s: &str, name: &str) -> crate::error::Result<Vec<String>> {
+    crate::preprocess::custom_tokenizer::apply_custom_tokenizer(name, s)
+}
+
+/// CJK-aware tokenizer for use in string similarity metrics.
+///
+/// If any CJK character is detected, uses [`smart_tokenize`] (CJK chars become
+/// unigrams, Latin runs become whitespace tokens). Otherwise falls back to
+/// simple whitespace splitting.
+pub(crate) fn tokenize_for_matching(s: &str) -> Vec<String> {
+    if s.chars().any(is_cjk) {
+        smart_tokenize(s)
+    } else {
+        s.split_whitespace().map(str::to_string).collect()
+    }
 }
 
 #[cfg(test)]
@@ -188,6 +290,54 @@ mod tests {
         assert_eq!(
             smart_tokenize("Tokyo 東京 is great"),
             vec!["Tokyo", "東", "京", "is", "great"]
+        );
+    }
+
+    #[test]
+    fn cjk_ngram_basic() {
+        assert_eq!(
+            cjk_ngram_tokenize("東京タワー", 2),
+            vec!["東京", "京タ", "タワ", "ワー"]
+        );
+    }
+
+    #[test]
+    fn cjk_ngram_too_short() {
+        assert!(cjk_ngram_tokenize("東", 2).is_empty());
+    }
+
+    #[test]
+    fn cjk_ngram_ignores_latin() {
+        assert_eq!(cjk_ngram_tokenize("ab東京cd", 2), vec!["東京"]);
+    }
+
+    #[test]
+    fn smart_tokenize_ngram_mixed() {
+        let tokens = smart_tokenize_ngram("Hello 東京タワー world", 2);
+        assert_eq!(
+            tokens,
+            vec!["Hello", "東京", "京タ", "タワ", "ワー", "world"]
+        );
+    }
+
+    #[test]
+    fn tokenize_for_matching_latin() {
+        assert_eq!(tokenize_for_matching("hello world"), vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn tokenize_for_matching_cjk() {
+        assert_eq!(
+            tokenize_for_matching("東京タワー"),
+            vec!["東", "京", "タ", "ワ", "ー"]
+        );
+    }
+
+    #[test]
+    fn tokenize_for_matching_mixed() {
+        assert_eq!(
+            tokenize_for_matching("Tokyo 東京"),
+            vec!["Tokyo", "東", "京"]
         );
     }
 }

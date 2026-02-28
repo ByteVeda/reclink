@@ -16,6 +16,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import reclink._core as _core
+from reclink.streaming import match_stream_async as match_stream_async
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
