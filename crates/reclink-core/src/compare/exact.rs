@@ -28,6 +28,10 @@ impl FieldComparator for ExactComparator {
         1
     }
 
+    fn selectivity_hint(&self) -> f64 {
+        5.0
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         if a == b && !a.is_null() {
             1.0

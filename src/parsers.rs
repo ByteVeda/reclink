@@ -54,6 +54,9 @@ pub fn parse_preprocess_ops(names: &[String]) -> PyResult<Vec<preprocess::Prepro
             "strip_hebrew_diacritics" => Ok(preprocess::PreprocessOp::StripHebrewDiacritics),
             "normalize_arabic" => Ok(preprocess::PreprocessOp::NormalizeArabic),
             "strip_bidi_marks" => Ok(preprocess::PreprocessOp::StripBidiMarks),
+            "fold_case_turkish" => Ok(preprocess::PreprocessOp::FoldCaseLocale(
+                preprocess::CaseFoldLocale::Turkish,
+            )),
             other if other.starts_with("cjk_ngram_tokenize_") => {
                 let n_str = &other["cjk_ngram_tokenize_".len()..];
                 let n: usize = n_str.parse().map_err(|_| {

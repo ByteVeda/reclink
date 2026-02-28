@@ -27,6 +27,10 @@ impl FieldComparator for StringComparator {
         &self.field
     }
 
+    fn selectivity_hint(&self) -> f64 {
+        1.5
+    }
+
     fn estimated_cost(&self) -> u32 {
         match &self.metric {
             Metric::Hamming(_) => 10,

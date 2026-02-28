@@ -164,16 +164,18 @@ pub fn cosine_similarity(a: &str, b: &str, n: usize) -> f64 {
     dot as f64 / ((norm_a as f64).sqrt() * (norm_b as f64).sqrt())
 }
 
-/// SIMD-accelerated path: extract count pairs into vectors, then SIMD dot/norm.
+/// SIMD-accelerated path: extract count pairs into aligned vectors, then SIMD dot/norm.
 fn cosine_simd_path(
     freq_a: &AHashMap<Vec<char>, u32>,
     freq_b: &AHashMap<Vec<char>, u32>,
 ) -> (u64, u64, u64) {
-    // Extract paired counts for shared n-grams
-    let mut a_shared = Vec::with_capacity(freq_a.len());
-    let mut b_shared = Vec::with_capacity(freq_a.len());
-    let mut a_all: Vec<u32> = Vec::with_capacity(freq_a.len());
-    let mut b_all: Vec<u32> = Vec::with_capacity(freq_b.len());
+    use crate::metrics::simd_util::AlignedVec;
+
+    // Extract paired counts for shared n-grams into 32-byte aligned buffers
+    let mut a_shared = AlignedVec::<u32>::with_capacity(freq_a.len());
+    let mut b_shared = AlignedVec::<u32>::with_capacity(freq_a.len());
+    let mut a_all = AlignedVec::<u32>::with_capacity(freq_a.len());
+    let mut b_all = AlignedVec::<u32>::with_capacity(freq_b.len());
 
     for (ngram, &count_a) in freq_a {
         a_all.push(count_a);

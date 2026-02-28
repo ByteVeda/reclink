@@ -157,6 +157,7 @@ pub struct PipelineBuilder {
     comparators: Vec<Box<dyn FieldComparator>>,
     classifier: Option<Box<dyn Classifier>>,
     cluster: ClusterConfig,
+    selectivity_overrides: Option<Vec<f64>>,
 }
 
 impl PipelineBuilder {
@@ -168,6 +169,7 @@ impl PipelineBuilder {
             comparators: Vec::new(),
             classifier: None,
             cluster: ClusterConfig::None,
+            selectivity_overrides: None,
         }
     }
 
@@ -201,11 +203,21 @@ impl PipelineBuilder {
         self
     }
 
+    /// Overrides selectivity hints for each comparator (in insertion order).
+    ///
+    /// The length must match the number of comparators added so far.
+    /// Higher values mean more selective (the pipeline sorts by
+    /// `estimated_cost / selectivity` to run cheap, selective comparators first).
+    pub fn with_selectivity_hints(mut self, hints: Vec<f64>) -> Self {
+        self.selectivity_overrides = Some(hints);
+        self
+    }
+
     /// Builds the pipeline, returning an error if not fully configured.
     ///
-    /// Comparators are stable-sorted by [`FieldComparator::estimated_cost`]
-    /// so the pipeline evaluates cheapest comparators first, enabling
-    /// early termination via [`Classifier::can_reject_early`].
+    /// Comparators are stable-sorted by `estimated_cost / selectivity_hint`
+    /// so the pipeline evaluates cheap, high-selectivity comparators first,
+    /// enabling early termination via [`Classifier::can_reject_early`].
     pub fn build(self) -> Result<ReclinkPipeline> {
         if self.blockers.is_empty() {
             return Err(ReclinkError::Pipeline(
@@ -217,11 +229,41 @@ impl PipelineBuilder {
                 "at least one field comparator is required".into(),
             ));
         }
+        if let Some(ref hints) = self.selectivity_overrides {
+            if hints.len() != self.comparators.len() {
+                return Err(ReclinkError::Pipeline(format!(
+                    "selectivity_hints length ({}) must match comparators length ({})",
+                    hints.len(),
+                    self.comparators.len()
+                )));
+            }
+        }
         let classifier = self
             .classifier
             .ok_or_else(|| ReclinkError::Pipeline("a classifier is required".into()))?;
-        let mut comparators = self.comparators;
-        comparators.sort_by_key(|c| c.estimated_cost());
+
+        // Pair comparators with their index (for selectivity overrides)
+        let mut indexed: Vec<(usize, Box<dyn FieldComparator>)> =
+            self.comparators.into_iter().enumerate().collect();
+
+        let overrides = &self.selectivity_overrides;
+        indexed.sort_by(|(i_a, a), (i_b, b)| {
+            let sel_a = overrides
+                .as_ref()
+                .map_or_else(|| a.selectivity_hint(), |h| h[*i_a]);
+            let sel_b = overrides
+                .as_ref()
+                .map_or_else(|| b.selectivity_hint(), |h| h[*i_b]);
+            let key_a = a.estimated_cost() as f64 / sel_a;
+            let key_b = b.estimated_cost() as f64 / sel_b;
+            key_a
+                .partial_cmp(&key_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let comparators: Vec<Box<dyn FieldComparator>> =
+            indexed.into_iter().map(|(_, c)| c).collect();
+
         Ok(ReclinkPipeline {
             blockers: self.blockers,
             comparators,
@@ -235,6 +277,12 @@ impl Default for PipelineBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Helper to compute the composite sort key for a comparator.
+#[cfg(test)]
+fn sort_key(cmp: &dyn FieldComparator) -> f64 {
+    cmp.estimated_cost() as f64 / cmp.selectivity_hint()
 }
 
 /// Deduplicates candidate pairs from multiple blockers.
@@ -254,4 +302,83 @@ fn dedup_pairs(all: Vec<Vec<CandidatePair>>) -> Vec<CandidatePair> {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compare::{DateComparator, ExactComparator, NumericComparator, StringComparator};
+    use crate::metrics::Metric;
+
+    #[test]
+    fn composite_key_ordering() {
+        // Exact: cost=1, sel=5.0, key=0.2
+        // Numeric: cost=2, sel=3.0, key=0.67
+        // Date: cost=5, sel=4.0, key=1.25
+        // String(Jaro): cost=20, sel=1.5, key=13.3
+        let exact = ExactComparator::new("id");
+        let numeric = NumericComparator::new("age", 10.0);
+        let date = DateComparator::new("dob");
+        let string = StringComparator::new("name", Metric::default());
+
+        let key_exact = sort_key(&exact);
+        let key_numeric = sort_key(&numeric);
+        let key_date = sort_key(&date);
+        let key_string = sort_key(&string);
+
+        assert!(key_exact < key_numeric);
+        assert!(key_numeric < key_date);
+        assert!(key_date < key_string);
+    }
+
+    #[test]
+    fn selectivity_overrides_change_order() {
+        // Without overrides: exact (key=0.2) comes before string (key=13.3)
+        // With overrides: give string selectivity=100.0, key=20/100=0.2
+        //                 give exact selectivity=0.1, key=1/0.1=10.0
+        // So string should come first
+        let builder = ReclinkPipeline::builder()
+            .add_blocker(Box::new(crate::blocking::ExactBlocking::new("id")))
+            .add_comparator(Box::new(ExactComparator::new("id")))
+            .add_comparator(Box::new(StringComparator::new("name", Metric::default())))
+            .with_selectivity_hints(vec![0.1, 100.0])
+            .set_classifier(Box::new(crate::classify::ThresholdClassifier::new(0.5)));
+
+        let pipeline = builder.build().unwrap();
+        // String should be first now (lower sort key)
+        assert_eq!(pipeline.comparators[0].field_name(), "name");
+        assert_eq!(pipeline.comparators[1].field_name(), "id");
+    }
+
+    #[test]
+    fn mismatched_hints_length_returns_error() {
+        let builder = ReclinkPipeline::builder()
+            .add_blocker(Box::new(crate::blocking::ExactBlocking::new("id")))
+            .add_comparator(Box::new(ExactComparator::new("id")))
+            .add_comparator(Box::new(StringComparator::new("name", Metric::default())))
+            .with_selectivity_hints(vec![1.0]) // only 1 hint for 2 comparators
+            .set_classifier(Box::new(crate::classify::ThresholdClassifier::new(0.5)));
+
+        let result = builder.build();
+        assert!(result.is_err());
+        let err = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected error"),
+        };
+        assert!(err.contains("selectivity_hints length"));
+    }
+
+    #[test]
+    fn custom_comparators_get_default_selectivity() {
+        use crate::compare::custom::CustomComparatorFn;
+        use std::sync::Arc;
+
+        let func: CustomComparatorFn = Arc::new(|a, b| if a == b { 1.0 } else { 0.0 });
+        crate::compare::register_custom_comparator("test_sel_default", func).unwrap();
+
+        let cmp = crate::compare::custom_comparator_from_name("field", "test_sel_default").unwrap();
+        assert!((cmp.selectivity_hint() - 1.0).abs() < f64::EPSILON);
+
+        crate::compare::unregister_custom_comparator("test_sel_default");
+    }
 }

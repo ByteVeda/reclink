@@ -9,6 +9,7 @@ pub use language::{
     normalize_arabic, strip_arabic_diacritics, strip_bidi_marks, strip_hebrew_diacritics,
 };
 pub use text::{
-    expand_abbreviations, fold_case, normalize_unicode, normalize_whitespace, regex_replace,
-    remove_stop_words, standardize_name, strip_diacritics, strip_punctuation, NormalizationForm,
+    expand_abbreviations, fold_case, fold_case_locale, locale_aware_compare, normalize_unicode,
+    normalize_whitespace, regex_replace, remove_stop_words, standardize_name, strip_diacritics,
+    strip_punctuation, CaseFoldLocale, NormalizationForm,
 };

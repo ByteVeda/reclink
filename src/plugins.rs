@@ -305,6 +305,63 @@ fn list_custom_preprocessors() -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Tokenizer wrapper
+// ---------------------------------------------------------------------------
+
+/// Wraps a Python callable `(str) -> list[str]`.
+struct PyTokenizerWrapper {
+    func: PyObject,
+}
+
+unsafe impl Send for PyTokenizerWrapper {}
+unsafe impl Sync for PyTokenizerWrapper {}
+
+impl PyTokenizerWrapper {
+    fn call(&self, input: &str) -> Vec<String> {
+        Python::with_gil(|py| {
+            self.func
+                .call1(py, (input,))
+                .and_then(|r| r.extract::<Vec<String>>(py))
+                .unwrap_or_else(|_| vec![input.to_string()])
+        })
+    }
+}
+
+/// Register a custom tokenizer function.
+///
+/// The function must accept a string and return a list of strings (tokens).
+#[pyfunction]
+fn register_tokenizer(name: String, func: PyObject) -> PyResult<()> {
+    // Validate by test-calling
+    Python::with_gil(|py| -> PyResult<()> {
+        let result = func.call1(py, ("test",))?;
+        let _: Vec<String> = result
+            .extract(py)
+            .map_err(|_| PyValueError::new_err("tokenizer function must return list[str]"))?;
+        Ok(())
+    })?;
+
+    let wrapper = Arc::new(PyTokenizerWrapper { func });
+    let tok_fn: preprocess::custom_tokenizer::CustomTokenizerFn =
+        Arc::new(move |input| wrapper.call(input));
+
+    preprocess::custom_tokenizer::register_custom_tokenizer(&name, tok_fn)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Unregister a custom tokenizer. Returns True if it existed.
+#[pyfunction]
+fn unregister_tokenizer(name: &str) -> bool {
+    preprocess::custom_tokenizer::unregister_custom_tokenizer(name)
+}
+
+/// List all registered custom tokenizer names.
+#[pyfunction]
+fn list_custom_tokenizers() -> Vec<String> {
+    preprocess::custom_tokenizer::list_custom_tokenizers()
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -325,5 +382,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(register_preprocessor, m)?)?;
     m.add_function(wrap_pyfunction!(unregister_preprocessor, m)?)?;
     m.add_function(wrap_pyfunction!(list_custom_preprocessors, m)?)?;
+    // Tokenizers
+    m.add_function(wrap_pyfunction!(register_tokenizer, m)?)?;
+    m.add_function(wrap_pyfunction!(unregister_tokenizer, m)?)?;
+    m.add_function(wrap_pyfunction!(list_custom_tokenizers, m)?)?;
     Ok(())
 }

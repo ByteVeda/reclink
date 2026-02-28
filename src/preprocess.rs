@@ -245,6 +245,64 @@ fn transliterate_hangul(s: &str) -> String {
     )
 }
 
+/// Fold a string to lowercase with locale-specific rules.
+///
+/// Parameters
+/// ----------
+/// s : str
+///     The input string.
+/// locale : str
+///     Locale hint: ``"default"`` or ``"turkish"``.
+///
+/// Returns
+/// -------
+/// str
+///     Lowercased string according to the locale.
+#[pyfunction]
+#[pyo3(signature = (s, locale="default"))]
+fn fold_case_locale(s: &str, locale: &str) -> PyResult<String> {
+    let loc = match locale {
+        "default" => preprocess::CaseFoldLocale::Default,
+        "turkish" => preprocess::CaseFoldLocale::Turkish,
+        _ => {
+            return Err(PyValueError::new_err(format!(
+                "unknown locale: {locale}. Expected: default, turkish"
+            )));
+        }
+    };
+    Ok(preprocess::fold_case_locale(s, loc))
+}
+
+/// Compare two strings for equality under locale-aware case folding.
+///
+/// Parameters
+/// ----------
+/// a : str
+///     First string.
+/// b : str
+///     Second string.
+/// locale : str
+///     Locale hint: ``"default"`` or ``"turkish"``.
+///
+/// Returns
+/// -------
+/// bool
+///     True if the strings are equal after locale-aware case folding.
+#[pyfunction]
+#[pyo3(signature = (a, b, locale="default"))]
+fn locale_aware_compare(a: &str, b: &str, locale: &str) -> PyResult<bool> {
+    let loc = match locale {
+        "default" => preprocess::CaseFoldLocale::Default,
+        "turkish" => preprocess::CaseFoldLocale::Turkish,
+        _ => {
+            return Err(PyValueError::new_err(format!(
+                "unknown locale: {locale}. Expected: default, turkish"
+            )));
+        }
+    };
+    Ok(preprocess::locale_aware_compare(a, b, loc))
+}
+
 /// Apply a chain of preprocessing operations to a batch of strings in parallel.
 #[pyfunction]
 fn preprocess_batch(
@@ -395,6 +453,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(strip_bidi_marks, m)?)?;
     m.add_function(wrap_pyfunction!(transliterate_devanagari, m)?)?;
     m.add_function(wrap_pyfunction!(transliterate_hangul, m)?)?;
+    m.add_function(wrap_pyfunction!(fold_case_locale, m)?)?;
+    m.add_function(wrap_pyfunction!(locale_aware_compare, m)?)?;
     m.add_function(wrap_pyfunction!(preprocess_batch, m)?)?;
     m.add_function(wrap_pyfunction!(ngram_tokenize_batch, m)?)?;
     m.add_function(wrap_pyfunction!(whitespace_tokenize_batch, m)?)?;

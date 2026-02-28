@@ -34,6 +34,49 @@ pub fn fold_case(s: &str) -> String {
     s.to_lowercase()
 }
 
+/// Locale hint for case folding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaseFoldLocale {
+    /// Standard Unicode case folding (Rust `to_lowercase`).
+    Default,
+    /// Turkish/Azerbaijani locale: I → ı, İ → i.
+    Turkish,
+}
+
+/// Folds the string to lowercase with locale-specific rules.
+///
+/// For [`CaseFoldLocale::Turkish`]:
+/// - `I` (U+0049) → `ı` (U+0131, dotless i)
+/// - `İ` (U+0130, capital dotted I) → `i` (U+0069)
+/// - All other characters use standard `to_lowercase`.
+#[must_use]
+pub fn fold_case_locale(s: &str, locale: CaseFoldLocale) -> String {
+    match locale {
+        CaseFoldLocale::Default => s.to_lowercase(),
+        CaseFoldLocale::Turkish => {
+            let mut result = String::with_capacity(s.len());
+            for ch in s.chars() {
+                match ch {
+                    'I' => result.push('\u{0131}'), // dotless i
+                    '\u{0130}' => result.push('i'), // capital dotted I → i
+                    _ => {
+                        for lower in ch.to_lowercase() {
+                            result.push(lower);
+                        }
+                    }
+                }
+            }
+            result
+        }
+    }
+}
+
+/// Compares two strings for equality under locale-aware case folding.
+#[must_use]
+pub fn locale_aware_compare(a: &str, b: &str, locale: CaseFoldLocale) -> bool {
+    fold_case_locale(a, locale) == fold_case_locale(b, locale)
+}
+
 /// Normalizes whitespace: trims and collapses internal runs to single spaces.
 #[must_use]
 pub fn normalize_whitespace(s: &str) -> String {
@@ -182,6 +225,35 @@ mod tests {
         // ASCII passthrough
         assert_eq!(strip_diacritics("hello"), "hello");
         assert_eq!(strip_diacritics(""), "");
+    }
+
+    #[test]
+    fn locale_case_folding_turkish() {
+        assert_eq!(
+            fold_case_locale("ISTANBUL", CaseFoldLocale::Turkish),
+            "\u{0131}stanbul" // ıstanbul
+        );
+        assert_eq!(
+            fold_case_locale("\u{0130}stanbul", CaseFoldLocale::Turkish),
+            "istanbul"
+        );
+    }
+
+    #[test]
+    fn locale_case_folding_default() {
+        assert_eq!(
+            fold_case_locale("ISTANBUL", CaseFoldLocale::Default),
+            "istanbul"
+        );
+    }
+
+    #[test]
+    fn locale_aware_compare_turkish() {
+        assert!(locale_aware_compare(
+            "D\u{0130}\u{015E}",
+            "di\u{015F}",
+            CaseFoldLocale::Turkish
+        ));
     }
 
     #[test]

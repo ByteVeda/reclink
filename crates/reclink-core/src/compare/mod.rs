@@ -31,4 +31,14 @@ pub trait FieldComparator: Send + Sync {
     fn estimated_cost(&self) -> u32 {
         100
     }
+
+    /// Selectivity hint: how much this comparator narrows the candidate space.
+    ///
+    /// Higher values mean more selective (e.g., exact match on a unique field = 5.0).
+    /// The pipeline sorts by `estimated_cost / selectivity_hint` so that cheap,
+    /// highly-selective comparators run first.
+    /// Default is `1.0` (neutral selectivity).
+    fn selectivity_hint(&self) -> f64 {
+        1.0
+    }
 }

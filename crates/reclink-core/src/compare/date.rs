@@ -28,6 +28,10 @@ impl FieldComparator for DateComparator {
         5
     }
 
+    fn selectivity_hint(&self) -> f64 {
+        4.0
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         let a_str = match a {
             FieldValue::Date(d) => d.as_str(),

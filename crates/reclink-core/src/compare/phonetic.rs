@@ -31,6 +31,10 @@ impl FieldComparator for PhoneticComparator {
         20
     }
 
+    fn selectivity_hint(&self) -> f64 {
+        2.0
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         let a_text = match a {
             FieldValue::Text(s) => s.as_str(),

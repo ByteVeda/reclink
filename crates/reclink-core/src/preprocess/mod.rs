@@ -4,20 +4,22 @@
 //! punctuation stripping, tokenization, and name standardization.
 
 pub mod custom;
+pub mod custom_tokenizer;
 mod normalize;
 pub mod stop_words;
-pub(crate) mod tokenize;
+pub mod tokenize;
 pub mod transliterate;
 
 pub use normalize::{
-    clean_address, clean_company, clean_name, expand_abbreviations, fold_case, normalize_arabic,
-    normalize_email, normalize_unicode, normalize_url, normalize_whitespace, regex_replace,
-    remove_stop_words, standardize_name, strip_arabic_diacritics, strip_bidi_marks,
-    strip_diacritics, strip_hebrew_diacritics, strip_punctuation, NormalizationForm,
+    clean_address, clean_company, clean_name, expand_abbreviations, fold_case, fold_case_locale,
+    locale_aware_compare, normalize_arabic, normalize_email, normalize_unicode, normalize_url,
+    normalize_whitespace, regex_replace, remove_stop_words, standardize_name,
+    strip_arabic_diacritics, strip_bidi_marks, strip_diacritics, strip_hebrew_diacritics,
+    strip_punctuation, CaseFoldLocale, NormalizationForm,
 };
 pub use tokenize::{
     character_tokenize, cjk_ngram_tokenize, is_cjk, ngram_tokenize, smart_tokenize,
-    smart_tokenize_ngram, whitespace_tokenize,
+    smart_tokenize_ngram, tokenize_with_custom, whitespace_tokenize,
 };
 
 use rayon::prelude::*;
@@ -77,6 +79,8 @@ pub enum PreprocessOp {
         /// N-gram size.
         n: usize,
     },
+    /// Locale-aware case folding.
+    FoldCaseLocale(CaseFoldLocale),
     /// User-defined custom preprocessing operation.
     Custom {
         /// Name of the registered custom preprocessor.
@@ -121,6 +125,7 @@ pub fn apply_ops(s: &str, ops: &[PreprocessOp]) -> Result<String> {
             PreprocessOp::StripBidiMarks => strip_bidi_marks(&result),
             PreprocessOp::Transliterate(script) => transliterate::transliterate(&result, *script),
             PreprocessOp::CjkNgramTokenize { n } => cjk_ngram_tokenize(&result, *n).join(" "),
+            PreprocessOp::FoldCaseLocale(locale) => fold_case_locale(&result, *locale),
             PreprocessOp::Custom { name } => custom::apply_custom_preprocessor(name, &result)?,
         };
     }

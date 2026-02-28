@@ -31,6 +31,10 @@ impl FieldComparator for NumericComparator {
         2
     }
 
+    fn selectivity_hint(&self) -> f64 {
+        3.0
+    }
+
     fn compare(&self, a: &FieldValue, b: &FieldValue) -> f64 {
         let a_val = match a {
             FieldValue::Integer(i) => *i as f64,

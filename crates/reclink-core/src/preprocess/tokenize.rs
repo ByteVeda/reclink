@@ -159,6 +159,15 @@ pub fn smart_tokenize_ngram(s: &str, n: usize) -> Vec<String> {
     tokens
 }
 
+/// Tokenizes using a named custom tokenizer, or falls back to [`tokenize_for_matching`].
+///
+/// # Errors
+///
+/// Returns an error if `name` is not registered in the custom tokenizer registry.
+pub fn tokenize_with_custom(s: &str, name: &str) -> crate::error::Result<Vec<String>> {
+    crate::preprocess::custom_tokenizer::apply_custom_tokenizer(name, s)
+}
+
 /// CJK-aware tokenizer for use in string similarity metrics.
 ///
 /// If any CJK character is detected, uses [`smart_tokenize`] (CJK chars become
