@@ -29,6 +29,9 @@ from reclink._core import (
     PyEmResult as EmResult,
 )
 from reclink._core import (
+    PyIncrementalCluster as IncrementalCluster,
+)
+from reclink._core import (
     PyMatchResult as MatchResult,
 )
 from reclink._core import (
@@ -74,6 +77,7 @@ from reclink._core import (
     clean_name,
     cologne_phonetic,
     cosine,
+    daitch_mokotoff,
     damerau_levenshtein,
     damerau_levenshtein_similarity,
     damerau_levenshtein_threshold,
@@ -84,6 +88,7 @@ from reclink._core import (
     explain,
     fold_case,
     get_max_string_length,
+    gotoh,
     hamming,
     hamming_similarity,
     jaccard,
@@ -110,6 +115,10 @@ from reclink._core import (
     match_best,
     match_best_arrow,
     metaphone,
+    monge_elkan,
+    mra,
+    mra_compare,
+    needleman_wunsch,
     # Tokenization & Unicode normalization
     ngram_similarity,
     ngram_tokenize,
@@ -125,8 +134,10 @@ from reclink._core import (
     partial_ratio,
     phonetic_batch_arrow,
     phonetic_hybrid,
+    phonex,
     # Batch preprocessing
     preprocess_batch,
+    ratcliff_obershelp,
     regex_replace,
     register_blocker,
     register_classifier,
@@ -174,6 +185,8 @@ from reclink._core import (
 from reclink._core import (
     register_metric as _register_metric_raw,
 )
+from reclink.active_learning import ActiveLearner as ActiveLearner
+from reclink.fuzzy_join import fuzzy_join as fuzzy_join
 
 if TYPE_CHECKING:
     from reclink._core import (
@@ -260,10 +273,12 @@ _register_polars_accessor()
 __version__ = "0.1.0"
 
 __all__ = [
+    "ActiveLearner",
     "BkTree",
     "BoundedStreamingMatcher",
     "CompositeScorer",
     "EmResult",
+    "IncrementalCluster",
     "MatchResult",
     "MinHashIndex",
     "MmapNgramIndex",
@@ -288,6 +303,7 @@ __all__ = [
     "clean_name",
     "cologne_phonetic",
     "cosine",
+    "daitch_mokotoff",
     "damerau_levenshtein",
     "damerau_levenshtein_similarity",
     "damerau_levenshtein_threshold",
@@ -299,7 +315,9 @@ __all__ = [
     "explain",
     "export",
     "fold_case",
+    "fuzzy_join",
     "get_max_string_length",
+    "gotoh",
     "hamming",
     "hamming_similarity",
     "jaccard",
@@ -324,6 +342,10 @@ __all__ = [
     "match_best_arrow",
     "metaphone",
     "metrics",
+    "monge_elkan",
+    "mra",
+    "mra_compare",
+    "needleman_wunsch",
     "ngram_similarity",
     "ngram_tokenize",
     "ngram_tokenize_batch",
@@ -338,9 +360,11 @@ __all__ = [
     "phonetic",
     "phonetic_batch_arrow",
     "phonetic_hybrid",
+    "phonex",
     "pipeline",
     "preprocess_batch",
     "presets",
+    "ratcliff_obershelp",
     "regex_replace",
     "register_blocker",
     "register_classifier",
