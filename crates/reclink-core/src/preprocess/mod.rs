@@ -22,6 +22,7 @@ pub use tokenize::{
     smart_tokenize_ngram, tokenize_with_custom, whitespace_tokenize,
 };
 
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 use crate::error::Result;
@@ -138,5 +139,10 @@ pub fn apply_ops(s: &str, ops: &[PreprocessOp]) -> Result<String> {
 ///
 /// Returns an error if any regex operation has an invalid pattern.
 pub fn preprocess_batch(strings: &[String], ops: &[PreprocessOp]) -> Result<Vec<String>> {
-    strings.par_iter().map(|s| apply_ops(s, ops)).collect()
+    #[cfg(feature = "parallel")]
+    let iter = strings.par_iter();
+    #[cfg(not(feature = "parallel"))]
+    let iter = strings.iter();
+
+    iter.map(|s| apply_ops(s, ops)).collect()
 }
