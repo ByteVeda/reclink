@@ -41,6 +41,10 @@ const ALL_METRICS: &[&str] = &[
     "ngram_similarity",
     "smith_waterman",
     "phonetic_hybrid",
+    "ratcliff_obershelp",
+    "needleman_wunsch",
+    "gotoh",
+    "monge_elkan",
 ];
 
 /// Compare two strings with all available algorithms and return the breakdown.
@@ -101,6 +105,10 @@ fn metric_name(m: &Metric) -> Option<String> {
         Metric::NgramSimilarity(_) => "ngram_similarity",
         Metric::SmithWaterman(_) => "smith_waterman",
         Metric::PhoneticHybrid(_) => "phonetic_hybrid",
+        Metric::RatcliffObershelp(_) => "ratcliff_obershelp",
+        Metric::NeedlemanWunsch(_) => "needleman_wunsch",
+        Metric::Gotoh(_) => "gotoh",
+        Metric::MongeElkan(_) => "monge_elkan",
         Metric::Custom { name, .. } => return Some(name.clone()),
     };
     Some(name.to_string())

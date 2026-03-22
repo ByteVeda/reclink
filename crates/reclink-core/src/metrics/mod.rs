@@ -1,6 +1,6 @@
 //! String similarity and distance metrics.
 //!
-//! This module provides 17 string comparison algorithms exposed through two traits:
+//! This module provides 21 string comparison algorithms exposed through two traits:
 //! - [`DistanceMetric`] for edit-distance style metrics (returning `usize`)
 //! - [`SimilarityMetric`] for normalized similarity scores (returning `f64` in \[0, 1\])
 //!
@@ -15,6 +15,7 @@ pub mod composite;
 pub mod cosine;
 pub mod damerau_levenshtein;
 pub mod explain;
+pub mod gotoh;
 pub mod hamming;
 pub mod jaccard;
 pub mod jaro;
@@ -22,9 +23,12 @@ pub mod jaro_winkler;
 pub mod lcs;
 pub mod levenshtein;
 pub mod longest_common_substring;
+pub mod monge_elkan;
+pub mod needleman_wunsch;
 pub mod ngram_similarity;
 pub mod partial_ratio;
 pub mod phonetic_hybrid;
+pub mod ratcliff_obershelp;
 pub mod smith_waterman;
 pub mod sorensen_dice;
 pub mod streaming;
@@ -37,6 +41,7 @@ pub use batch::{cdist_columnar, match_batch, match_best, ColumnarCdist, MatchRes
 pub use composite::CompositeScorer;
 pub use cosine::Cosine;
 pub use damerau_levenshtein::DamerauLevenshtein;
+pub use gotoh::Gotoh;
 pub use hamming::Hamming;
 pub use jaccard::Jaccard;
 pub use jaro::Jaro;
@@ -44,9 +49,12 @@ pub use jaro_winkler::JaroWinkler;
 pub use lcs::Lcs;
 pub use levenshtein::Levenshtein;
 pub use longest_common_substring::LongestCommonSubstring;
+pub use monge_elkan::MongeElkan;
+pub use needleman_wunsch::NeedlemanWunsch;
 pub use ngram_similarity::NgramSimilarity;
 pub use partial_ratio::PartialRatio;
 pub use phonetic_hybrid::PhoneticHybrid;
+pub use ratcliff_obershelp::RatcliffObershelp;
 pub use simd_util::AlignedVec;
 pub use smith_waterman::SmithWaterman;
 pub use sorensen_dice::SorensenDice;
@@ -120,6 +128,10 @@ fn is_builtin_metric(name: &str) -> bool {
             | "ngram_similarity"
             | "smith_waterman"
             | "phonetic_hybrid"
+            | "ratcliff_obershelp"
+            | "needleman_wunsch"
+            | "gotoh"
+            | "monge_elkan"
     )
 }
 
@@ -235,6 +247,14 @@ pub enum Metric {
     SmithWaterman(SmithWaterman),
     /// Phonetic + edit distance hybrid.
     PhoneticHybrid(PhoneticHybrid),
+    /// Ratcliff-Obershelp (Gestalt Pattern Matching) similarity.
+    RatcliffObershelp(RatcliffObershelp),
+    /// Needleman-Wunsch global alignment similarity.
+    NeedlemanWunsch(NeedlemanWunsch),
+    /// Gotoh global alignment with affine gap penalties.
+    Gotoh(Gotoh),
+    /// Monge-Elkan token-based hybrid similarity.
+    MongeElkan(MongeElkan),
     /// User-defined custom metric (not serializable).
     #[serde(skip)]
     Custom {
@@ -269,6 +289,10 @@ impl std::fmt::Debug for Metric {
             Metric::NgramSimilarity(m) => f.debug_tuple("NgramSimilarity").field(m).finish(),
             Metric::SmithWaterman(m) => f.debug_tuple("SmithWaterman").field(m).finish(),
             Metric::PhoneticHybrid(m) => f.debug_tuple("PhoneticHybrid").field(m).finish(),
+            Metric::RatcliffObershelp(m) => f.debug_tuple("RatcliffObershelp").field(m).finish(),
+            Metric::NeedlemanWunsch(m) => f.debug_tuple("NeedlemanWunsch").field(m).finish(),
+            Metric::Gotoh(m) => f.debug_tuple("Gotoh").field(m).finish(),
+            Metric::MongeElkan(m) => f.debug_tuple("MongeElkan").field(m).finish(),
             Metric::Custom { name, .. } => f.debug_struct("Custom").field("name", name).finish(),
         }
     }
@@ -302,6 +326,10 @@ impl Metric {
             Metric::NgramSimilarity(m) => m.similarity(a, b),
             Metric::SmithWaterman(m) => m.similarity(a, b),
             Metric::PhoneticHybrid(m) => m.similarity(a, b),
+            Metric::RatcliffObershelp(m) => m.similarity(a, b),
+            Metric::NeedlemanWunsch(m) => m.similarity(a, b),
+            Metric::Gotoh(m) => m.similarity(a, b),
+            Metric::MongeElkan(m) => m.similarity(a, b),
             Metric::Custom { func, .. } => func(a, b),
         }
     }
@@ -339,6 +367,10 @@ pub fn metric_from_name(name: &str) -> Result<Metric> {
         "ngram_similarity" => Ok(Metric::NgramSimilarity(NgramSimilarity::default())),
         "smith_waterman" => Ok(Metric::SmithWaterman(SmithWaterman::default())),
         "phonetic_hybrid" => Ok(Metric::PhoneticHybrid(PhoneticHybrid::default())),
+        "ratcliff_obershelp" => Ok(Metric::RatcliffObershelp(RatcliffObershelp)),
+        "needleman_wunsch" => Ok(Metric::NeedlemanWunsch(NeedlemanWunsch::default())),
+        "gotoh" => Ok(Metric::Gotoh(Gotoh::default())),
+        "monge_elkan" => Ok(Metric::MongeElkan(MongeElkan::default())),
         _ => {
             // Fall through to custom metric registry
             let registry = CUSTOM_METRICS.read().unwrap();
@@ -353,7 +385,8 @@ pub fn metric_from_name(name: &str) -> Result<Metric> {
                      damerau_levenshtein, hamming, jaro, jaro_winkler, cosine, jaccard, \
                      sorensen_dice, weighted_levenshtein, token_sort, token_set, \
                      partial_ratio, lcs, longest_common_substring, ngram_similarity, \
-                     smith_waterman, phonetic_hybrid"
+                     smith_waterman, phonetic_hybrid, ratcliff_obershelp, \
+                     needleman_wunsch, gotoh, monge_elkan"
                 )))
             }
         }

@@ -127,3 +127,61 @@ thread_local! {
     pub(crate) static SW_SCRATCH: RefCell<SmithWatermanScratch> =
         RefCell::new(SmithWatermanScratch::new());
 }
+
+// ─── Needleman-Wunsch (single-row DP) ────────────────────────────────────────
+
+pub(crate) struct NeedlemanWunschScratch {
+    pub prev: Vec<f64>,
+}
+
+impl NeedlemanWunschScratch {
+    fn new() -> Self {
+        Self { prev: Vec::new() }
+    }
+
+    pub fn reset_nw(&mut self, b_len: usize, gap_penalty: f64) {
+        self.prev.clear();
+        self.prev.reserve(b_len + 1);
+        for j in 0..=b_len {
+            self.prev.push(j as f64 * gap_penalty);
+        }
+    }
+}
+
+thread_local! {
+    pub(crate) static NW_SCRATCH: RefCell<NeedlemanWunschScratch> =
+        RefCell::new(NeedlemanWunschScratch::new());
+}
+
+// ─── Gotoh (affine gap, three-recurrence DP) ─────────────────────────────────
+
+pub(crate) struct GotohScratch {
+    pub d_prev: Vec<f64>,
+    pub p_prev: Vec<f64>,
+}
+
+impl GotohScratch {
+    fn new() -> Self {
+        Self {
+            d_prev: Vec::new(),
+            p_prev: Vec::new(),
+        }
+    }
+
+    pub fn reset(&mut self, b_len: usize, gap_open: f64, gap_extend: f64) {
+        self.d_prev.clear();
+        self.d_prev.reserve(b_len + 1);
+        self.d_prev.push(0.0);
+        for j in 1..=b_len {
+            self.d_prev.push(gap_open + (j - 1) as f64 * gap_extend);
+        }
+
+        self.p_prev.clear();
+        self.p_prev.resize(b_len + 1, f64::NEG_INFINITY);
+    }
+}
+
+thread_local! {
+    pub(crate) static GOTOH_SCRATCH: RefCell<GotohScratch> =
+        RefCell::new(GotohScratch::new());
+}

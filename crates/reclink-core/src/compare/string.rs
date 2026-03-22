@@ -50,6 +50,10 @@ impl FieldComparator for StringComparator {
             Metric::NgramSimilarity(_) => 40,
             Metric::SmithWaterman(_) => 150,
             Metric::PhoneticHybrid(_) => 100,
+            Metric::RatcliffObershelp(_) => 60,
+            Metric::NeedlemanWunsch(_) => 150,
+            Metric::Gotoh(_) => 160,
+            Metric::MongeElkan(_) => 120,
             Metric::Custom { .. } => 100,
         }
     }
