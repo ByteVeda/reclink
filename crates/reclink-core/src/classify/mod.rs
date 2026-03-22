@@ -1,14 +1,22 @@
 //! Classifiers for turning comparison vectors into match/non-match decisions.
 
 pub mod custom;
+mod decision_tree;
 mod em;
 mod fellegi_sunter;
+mod logistic_regression;
 mod threshold;
 mod weighted;
 
 pub use custom::*;
+pub use decision_tree::{
+    train_decision_tree, DecisionTreeClassifier, DecisionTreeConfig, TreeNode,
+};
 pub use em::*;
 pub use fellegi_sunter::FellegiSunterClassifier;
+pub use logistic_regression::{
+    train_logistic_regression, LogisticRegressionClassifier, LogisticRegressionConfig,
+};
 pub use threshold::{ThresholdBandsClassifier, ThresholdClassifier};
 pub use weighted::{WeightedSumBandsClassifier, WeightedSumClassifier};
 
