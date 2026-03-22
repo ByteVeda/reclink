@@ -92,9 +92,10 @@ const config: Config = {
           label: 'Guides',
         },
         {
-          to: '/docs/playground',
-          label: 'Playground',
+          type: 'docSidebar',
+          sidebarId: 'playgroundSidebar',
           position: 'left',
+          label: 'Playground',
         },
         {
           href: 'https://github.com/pratyush618/reclink',
@@ -117,7 +118,7 @@ const config: Config = {
         {
           title: 'Tools',
           items: [
-            {label: 'Interactive Playground', to: '/docs/playground'},
+            {label: 'Interactive Playground', to: '/docs/playground/'},
             {label: 'PyPI', href: 'https://pypi.org/project/reclink/'},
           ],
         },
@@ -128,7 +129,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright \u00a9 ${new Date().getFullYear()} reclink contributors. Built with Docusaurus.`,
+      copyright: `Copyright \u00a9 ${new Date().getFullYear()} reclink contributors.`,
     },
     prism: {
       theme: prismThemes.github,

@@ -28,6 +28,9 @@ from reclink import soundex, metaphone, double_metaphone
     [<strong>Caverphone</strong>, "NZ Govt (2002)", "10-character code", "NZ/AU English names"],
     [<strong>Cologne Phonetic</strong>, "Hans Postel (1969)", "Numeric code", "German names and words"],
     [<strong>Beider-Morse</strong>, "Stephen Morse (2008)", "`|`-separated variants", "Multi-ethnic name matching"],
+    [<strong>Phonex</strong>, "A.J. Lait & B. Randell", "1 letter + 3 digits", "Improved Soundex with prefix handling"],
+    [<strong>MRA</strong>, "Western Airlines (1977)", "Up to 6 consonants", "Quick name comparison"],
+    [<strong>Daitch-Mokotoff</strong>, "Gary Mokotoff (1985)", "6-digit numeric (multi-valued)", "Slavic/Germanic/Hebrew names"],
   ]}
 />
 
@@ -329,9 +332,53 @@ phonetic_hybrid(
 
 ---
 
+## Phonex
+
+Improved variant of Soundex with better prefix handling (KN→N, WR→R, PH→F) and phoneme groupings.
+
+```python
+from reclink import phonex
+
+phonex("Smith")    # "S530"
+phonex("Knight")   # "N230" (K dropped)
+phonex("Wright")   # "R230" (W dropped)
+```
+
+---
+
+## Match Rating Approach (MRA)
+
+Two-part algorithm: encodes names by stripping vowels and compressing duplicates, then compares codes using a minimum-rating threshold.
+
+```python
+from reclink import mra, mra_compare
+
+mra("Smith")           # "SMTH"
+mra("Catherine")       # "CTHRN"
+
+mra_compare("Smith", "Smyth")      # True
+mra_compare("Smith", "Jones")      # False
+```
+
+---
+
+## Daitch-Mokotoff Soundex
+
+6-digit numeric codes for Slavic, Germanic, and Hebrew surnames. Can produce multiple codes when rules are ambiguous (branching).
+
+```python
+from reclink import daitch_mokotoff
+
+daitch_mokotoff("Schwartz")   # "479400"
+daitch_mokotoff("Cohen")      # "560000"
+daitch_mokotoff("Chaim")      # "560000,460000" (branching)
+```
+
+---
+
 ## Edge Cases
 
-- Empty strings return an empty code (or `"0000"` for Soundex).
+- Empty strings return an empty code (or `"0000"` for Soundex/Phonex, `"000000"` for Daitch-Mokotoff).
 - Non-alphabetic characters are generally ignored.
 - Unicode characters are handled by transliteration where applicable (e.g., `cologne_phonetic` handles German umlauts).
 

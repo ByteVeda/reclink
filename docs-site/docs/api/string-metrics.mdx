@@ -529,6 +529,57 @@ alignment = levenshtein_align("kitten", "sitting")
 
 ---
 
+## Alignment Metrics
+
+Alignment metrics are inspired by bioinformatics sequence alignment algorithms.
+
+### `ratcliff_obershelp(a, b)`
+
+Gestalt Pattern Matching -- recursively finds the longest common substring, then matches remaining left/right portions. Compatible with Python's `difflib.SequenceMatcher`.
+
+```python
+from reclink import ratcliff_obershelp
+
+ratcliff_obershelp("abcde", "abdce")  # 0.8
+ratcliff_obershelp("pennsylvania", "pencilvanya")  # 0.783
+```
+
+### `needleman_wunsch(a, b)`
+
+Global sequence alignment using dynamic programming. Unlike Smith-Waterman (local alignment), Needleman-Wunsch aligns the entire sequences, penalizing unmatched ends.
+
+```python
+from reclink import needleman_wunsch
+
+needleman_wunsch("ACGT", "ACGT")    # 1.0
+needleman_wunsch("kitten", "sitting")  # ~0.5
+```
+
+### `gotoh(a, b)`
+
+Affine gap penalty alignment -- extends Needleman-Wunsch with separate gap-open and gap-extend costs. A single long gap is penalized less than many short gaps.
+
+```python
+from reclink import gotoh
+
+gotoh("abcdef", "abef")   # single gap: higher score
+gotoh("abcdef", "acef")   # two gaps: lower score
+```
+
+### `monge_elkan(a, b, inner_metric=None)`
+
+Token-based hybrid metric. For each token in `a`, finds the best match in `b` using an inner metric, then averages. Handles token reordering naturally.
+
+```python
+from reclink import monge_elkan
+
+monge_elkan("john smith", "smith john")           # 1.0
+monge_elkan("john smith", "jon smyth")            # ~0.88
+monge_elkan("john smith", "jon smyth", "levenshtein")  # custom inner metric
+```
+
+---
+
 ## Edge Cases
 
 All metrics handle edge cases consistently:

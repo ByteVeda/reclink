@@ -355,9 +355,41 @@ All three methods accept `list[dict]`, Pandas DataFrames, or Polars DataFrames.
 
 ---
 
+## Active Learning
+
+Human-in-the-loop threshold optimization. Identifies uncertain pairs near the classification boundary and uses manual labels to find the optimal threshold.
+
+```python
+from reclink import ActiveLearner
+
+learner = ActiveLearner(scorer="jaro_winkler", threshold=0.85)
+
+records = ["John Smith", "Jon Smith", "Jane Doe", "Alice Johnson"]
+
+# Find uncertain pairs near the threshold
+pairs = learner.uncertain_pairs(records, n=5)
+# [{"left": 0, "right": 1, "left_value": "John Smith", "right_value": "Jon Smith", "score": 0.91}, ...]
+
+# Label pairs manually
+labels = [
+    {"left": 0, "right": 1, "label": "match"},
+    {"left": 0, "right": 2, "label": "non_match"},
+]
+
+# Update threshold from labels
+new_threshold = learner.update_from_labels(labels)
+print(f"Optimized threshold: {new_threshold}")
+
+# Classify all pairs with the new threshold
+matches = learner.classify(records)
+```
+
+---
+
 ## See Also
 
 - **[Batch Operations](./batch-operations)** -- `cdist`, `match_best`, and `match_batch` (synchronous)
 - **[Pipeline](./pipeline)** -- build and configure record linkage pipelines
+- **[Clustering](./clustering)** -- incremental clustering for streaming record assignment
 - **[Indexes](./indexes)** -- BK-tree, VP-tree, and MinHash for fast approximate search
 - **[Performance Guide](/docs/guides/performance)** -- tuning chunk sizes, worker counts, and memory usage

@@ -393,6 +393,36 @@ df.with_columns(
 
 ---
 
+## Fuzzy Join
+
+Standalone function for fuzzy joining two DataFrames. Works with both pandas and polars.
+
+```python
+from reclink import fuzzy_join
+
+left = pd.DataFrame({"name": ["Jon", "Jane", "Bob"]})
+right = pd.DataFrame({"name": ["John", "Janet", "Robert"]})
+
+result = fuzzy_join(
+    left, right,
+    on="name",
+    scorer="jaro_winkler",
+    threshold=0.8,
+    how="inner",   # or "left" to keep unmatched rows
+    limit=1,       # max matches per left row
+)
+# Returns merged DataFrame with _score column
+```
+
+Parameters:
+- `on` -- column name (same in both DataFrames), or use `left_on`/`right_on`
+- `scorer` -- any metric name (default `"jaro_winkler"`)
+- `threshold` -- minimum similarity (default `0.85`)
+- `how` -- `"inner"` (only matches) or `"left"` (keep all left rows)
+- `limit` -- max matches per left row (default `1`)
+
+---
+
 ## See Also
 
 - **[String Metrics](./string-metrics)** -- all available scorer names

@@ -436,8 +436,62 @@ index.memory_usage_human()  # e.g., "8.5 MB"
     [<strong>NgramIndex</strong>, "None (overlap-based)", "Approximate", "Yes", "No"],
     [<strong>MmapNgramIndex</strong>, "None (overlap-based)", "Approximate", "No (read-only)", "Yes"],
     [<strong>MinHashIndex</strong>, "None (Jaccard via LSH)", "Approximate", "Yes", "No"],
+    [<strong>BloomFilter</strong>, "None (set membership)", "No false negatives", "Yes", "No"],
+    [<strong>InvertedIndex</strong>, "None (token overlap)", "Approximate", "Yes", "No"],
   ]}
 />
+
+---
+
+## Bloom Filter
+
+Probabilistic set membership test with no false negatives. Useful for fast pre-filtering of candidate pairs.
+
+```python
+from reclink import BloomFilter
+
+bf = BloomFilter(expected_items=10000, false_positive_rate=0.01)
+bf.insert("John Smith")
+bf.insert("Jane Doe")
+
+bf.contains("John Smith")   # True (definitely in set)
+bf.contains("Unknown")      # False (definitely NOT in set)
+
+len(bf)                      # 2
+bf.memory_usage()            # "12.5 KB"
+bf.estimated_fp_rate()       # ~0.01
+```
+
+Also supports Python's `in` operator: `"John Smith" in bf`.
+
+---
+
+## Inverted Index
+
+Token-to-record mapping for fast candidate retrieval based on shared tokens.
+
+```python
+from reclink import InvertedIndex
+
+# Build with whitespace tokenizer
+idx = InvertedIndex.build(
+    ["john smith", "jane doe", "john doe"],
+    tokenizer="whitespace",
+)
+
+# Find records sharing at least 1 token with query
+results = idx.search("john doe", min_shared=1)
+# [(record, index, shared_token_count), ...]
+
+# Top-k by shared tokens
+results = idx.search_top_k("john doe", k=2)
+
+idx.vocab_size()  # Number of unique tokens
+```
+
+Tokenizer options: `"whitespace"` (default) or `"ngram:N"` (character n-grams, e.g., `"ngram:2"`).
+
+---
 
 ## Related
 
