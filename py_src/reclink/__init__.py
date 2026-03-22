@@ -20,6 +20,9 @@ from reclink._core import (
     PyBkTree as BkTree,
 )
 from reclink._core import (
+    PyBloomFilter as BloomFilter,
+)
+from reclink._core import (
     PyBoundedStreamingMatcher as BoundedStreamingMatcher,
 )
 from reclink._core import (
@@ -30,6 +33,9 @@ from reclink._core import (
 )
 from reclink._core import (
     PyIncrementalCluster as IncrementalCluster,
+)
+from reclink._core import (
+    PyInvertedIndex as InvertedIndex,
 )
 from reclink._core import (
     PyMatchResult as MatchResult,
@@ -81,6 +87,8 @@ from reclink._core import (
     damerau_levenshtein,
     damerau_levenshtein_similarity,
     damerau_levenshtein_threshold,
+    davies_bouldin_index,
+    dbscan_cluster,
     detect_language,
     double_metaphone,
     # Preprocessing
@@ -130,6 +138,7 @@ from reclink._core import (
     normalize_url,
     normalize_whitespace,
     nysiis,
+    optics_cluster,
     pairwise_similarity,
     partial_ratio,
     phonetic_batch_arrow,
@@ -145,6 +154,7 @@ from reclink._core import (
     register_preprocessor,
     remove_stop_words,
     set_max_string_length,
+    silhouette_score,
     smart_tokenize,
     smart_tokenize_batch,
     smart_tokenize_ngram,
@@ -163,6 +173,8 @@ from reclink._core import (
     token_set_ratio,
     token_sort_ratio,
     # Transliteration
+    train_decision_tree,
+    train_logistic_regression,
     transliterate_arabic,
     transliterate_cyrillic,
     transliterate_devanagari,
@@ -187,6 +199,7 @@ from reclink._core import (
 )
 from reclink.active_learning import ActiveLearner as ActiveLearner
 from reclink.fuzzy_join import fuzzy_join as fuzzy_join
+from reclink.threshold_optimizer import optimize_threshold as optimize_threshold
 
 if TYPE_CHECKING:
     from reclink._core import (
@@ -275,10 +288,12 @@ __version__ = "0.1.0"
 __all__ = [
     "ActiveLearner",
     "BkTree",
+    "BloomFilter",
     "BoundedStreamingMatcher",
     "CompositeScorer",
     "EmResult",
     "IncrementalCluster",
+    "InvertedIndex",
     "MatchResult",
     "MinHashIndex",
     "MmapNgramIndex",
@@ -307,6 +322,8 @@ __all__ = [
     "damerau_levenshtein",
     "damerau_levenshtein_similarity",
     "damerau_levenshtein_threshold",
+    "davies_bouldin_index",
+    "dbscan_cluster",
     "detect_language",
     "double_metaphone",
     "estimate_fellegi_sunter",
@@ -355,6 +372,8 @@ __all__ = [
     "normalize_url",
     "normalize_whitespace",
     "nysiis",
+    "optics_cluster",
+    "optimize_threshold",
     "pairwise_similarity",
     "partial_ratio",
     "phonetic",
@@ -373,6 +392,7 @@ __all__ = [
     "register_preprocessor",
     "remove_stop_words",
     "set_max_string_length",
+    "silhouette_score",
     "smart_tokenize",
     "smart_tokenize_batch",
     "smart_tokenize_ngram",
@@ -391,6 +411,8 @@ __all__ = [
     "synonym_expand",
     "token_set_ratio",
     "token_sort_ratio",
+    "train_decision_tree",
+    "train_logistic_regression",
     "transliterate_arabic",
     "transliterate_cyrillic",
     "transliterate_devanagari",
