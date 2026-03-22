@@ -2,6 +2,7 @@
 //!
 //! Provides `match_batch` (all results sorted by score) and `match_best` (single best match).
 
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 use crate::metrics::Metric;
@@ -25,8 +26,12 @@ pub fn match_batch(
     metric: &Metric,
     threshold: Option<f64>,
 ) -> Vec<MatchResult> {
-    let mut results: Vec<MatchResult> = candidates
-        .par_iter()
+    #[cfg(feature = "parallel")]
+    let iter = candidates.par_iter();
+    #[cfg(not(feature = "parallel"))]
+    let iter = candidates.iter();
+
+    let mut results: Vec<MatchResult> = iter
         .enumerate()
         .map(|(i, c)| MatchResult {
             index: i,
@@ -52,6 +57,7 @@ pub fn match_best(
     metric: &Metric,
     threshold: Option<f64>,
 ) -> Option<MatchResult> {
+    #[cfg(feature = "parallel")]
     let best = candidates
         .par_iter()
         .enumerate()
@@ -60,6 +66,16 @@ pub fn match_best(
             score: metric.similarity(query, c),
         })
         .reduce_with(|a, b| if a.score >= b.score { a } else { b });
+
+    #[cfg(not(feature = "parallel"))]
+    let best = candidates
+        .iter()
+        .enumerate()
+        .map(|(i, c)| MatchResult {
+            index: i,
+            score: metric.similarity(query, c),
+        })
+        .reduce(|a, b| if a.score >= b.score { a } else { b });
 
     best.filter(|r| threshold.is_none_or(|t| r.score >= t))
 }
@@ -99,8 +115,12 @@ pub fn cdist_columnar(queries: &[&str], candidates: &[&str], metric: &Metric) ->
         };
     }
 
-    let scores: Vec<f64> = queries
-        .par_iter()
+    #[cfg(feature = "parallel")]
+    let iter = queries.par_iter();
+    #[cfg(not(feature = "parallel"))]
+    let iter = queries.iter();
+
+    let scores: Vec<f64> = iter
         .flat_map(|q| {
             candidates
                 .iter()

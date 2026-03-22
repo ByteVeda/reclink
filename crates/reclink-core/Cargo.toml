@@ -6,7 +6,7 @@ description = "Pure Rust library for fuzzy string matching and record linkage"
 license = "MIT"
 
 [dependencies]
-rayon = "1.11"
+rayon = { version = "1.11", optional = true }
 unicode-normalization = "0.1"
 ahash = { version = "0.8", features = ["serde"] }
 thiserror = "2"
@@ -18,7 +18,8 @@ memmap2 = { version = "0.9", optional = true }
 crossbeam-channel = { version = "0.5", optional = true }
 
 [features]
-default = []
+default = ["parallel"]
+parallel = ["dep:rayon"]
 mmap = ["dep:memmap2"]
 streaming-backpressure = ["dep:crossbeam-channel"]
 

@@ -1,0 +1,115 @@
+---
+sidebar_position: 8
+title: Blocking Strategies
+description: Reference for all blocking strategies that reduce the candidate pair search space.
+---
+
+# Blocking Strategies
+
+Blocking strategies reduce the quadratic comparison space by grouping records that are likely to match into blocks. Only pairs within the same block are compared, dramatically improving performance on large datasets.
+
+All blocking is configured through the pipeline builder.
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .block_exact("last_name")
+    .block_phonetic("first_name", algorithm="soundex")
+    .compare_string("first_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+```
+
+---
+
+## Available Strategies
+
+| Strategy | Type | Best for | Parameters |
+|----------|------|----------|------------|
+| **Exact** | Hash-based | Exact field matches | `field` |
+| **Phonetic** | Hash-based | Name matching | `field`, `algorithm` |
+| **Sorted Neighborhood** | Window | Ordered data | `field`, `window_size` |
+| **Q-gram** | MinHash | Approximate matching | `field`, `q`, `threshold` |
+| **LSH** | Locality-sensitive | High-dimensional | `field`, `num_bands`, `band_size` |
+| **Canopy** | Clustering | Large datasets | `field`, `metric`, `tight`, `loose` |
+| **Trie** | Prefix tree | Prefix matching | `field`, `max_frequency` |
+| **Numeric** | Bucketing | Numeric fields | `field`, `bucket_size` |
+| **Date** | Resolution | Date fields | `field`, `resolution` |
+| **Hybrid** | Combination | Complex matching | `strategies`, `mode` |
+| **Custom** | Plugin | Domain-specific | User-defined |
+
+---
+
+## Exact Blocking
+
+Groups records by identical field values. Fast and precise but no tolerance for typos.
+
+```python
+pipeline = ReclinkPipeline.builder().block_exact("last_name")
+```
+
+## Phonetic Blocking
+
+Groups records by phonetic encoding of a field. Tolerant of spelling variations.
+
+```python
+pipeline = ReclinkPipeline.builder().block_phonetic("last_name", algorithm="soundex")
+```
+
+Supported algorithms: `"soundex"`, `"metaphone"`, `"double_metaphone"`, `"nysiis"`, `"caverphone"`, `"cologne_phonetic"`, `"beider_morse"`, `"phonex"`, `"mra"`, `"daitch_mokotoff"`.
+
+## Sorted Neighborhood
+
+Sorts records by a key field and compares within a sliding window.
+
+```python
+pipeline = ReclinkPipeline.builder().block_sorted_neighborhood("last_name", window_size=5)
+```
+
+## Q-gram Blocking
+
+Uses character q-gram MinHash signatures for approximate blocking.
+
+```python
+pipeline = ReclinkPipeline.builder().block_qgram("name", q=2, threshold=0.5)
+```
+
+## LSH Blocking
+
+Locality-sensitive hashing for high-dimensional similarity search.
+
+```python
+pipeline = ReclinkPipeline.builder().block_lsh("name", num_bands=10, band_size=5)
+```
+
+## Hybrid Blocking
+
+Combines multiple strategies with union (any match) or intersection (all must match) semantics.
+
+```python
+# Union mode: candidates from ANY strategy (increases recall)
+# Intersection mode: candidates from ALL strategies (increases precision)
+```
+
+Hybrid blocking is useful when no single strategy captures all true matches. Union mode is more common; intersection mode is useful when precision is critical.
+
+## Date Blocking
+
+Groups records by date field at a configurable resolution.
+
+```python
+pipeline = ReclinkPipeline.builder().block_date("birth_date", resolution="year")
+```
+
+Resolutions: `"year"`, `"month"`, `"day"`.
+
+## Numeric Blocking
+
+Buckets records by numeric field values.
+
+```python
+pipeline = ReclinkPipeline.builder().block_numeric("age", bucket_size=5)
+```

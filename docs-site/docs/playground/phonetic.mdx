@@ -1,0 +1,17 @@
+---
+title: Phonetic Algorithms
+description: Encode strings with 10 phonetic algorithms
+---
+
+import BrowserOnly from '@docusaurus/BrowserOnly';
+
+# Phonetic Algorithms
+
+Encode strings using 10 phonetic algorithms, compare names, or see all encodings at once.
+
+<BrowserOnly>
+  {() => {
+    const PhoneticAlgorithms = require('@site/src/components/playground/PhoneticAlgorithms').default;
+    return <PhoneticAlgorithms />;
+  }}
+</BrowserOnly>

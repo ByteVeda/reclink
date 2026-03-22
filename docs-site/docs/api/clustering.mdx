@@ -1,0 +1,155 @@
+---
+sidebar_position: 10
+title: Clustering
+description: Reference for all clustering algorithms and cluster quality metrics.
+---
+
+# Clustering
+
+After classification, clustering groups matched pairs into coherent record groups. This is essential when multiple records may refer to the same entity.
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .block_exact("last_name")
+    .compare_string("first_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .cluster_connected_components()
+    .build()
+)
+
+clusters = pipeline.dedup_cluster(records)
+# [[0, 3, 7], [1, 5], [2, 4, 6, 9], ...]
+```
+
+---
+
+## Available Algorithms
+
+| Algorithm | Type | Parameters | Best for |
+|-----------|------|------------|----------|
+| **Connected Components** | Graph | None | Simple transitive closure |
+| **Hierarchical** | Agglomerative | `linkage`, `threshold` | Controlled cluster merging |
+| **Incremental** | Streaming | `metric`, `threshold` | Real-time record arrival |
+| **DBSCAN** | Density-based | `min_similarity`, `min_samples` | Automatic cluster discovery |
+| **OPTICS** | Density-based | `min_samples`, `extract_threshold` | Varying-density clusters |
+
+---
+
+## Connected Components
+
+Groups all transitively linked records. If A matches B and B matches C, all three are in the same cluster.
+
+```python
+pipeline = ReclinkPipeline.builder().cluster_connected_components()
+```
+
+## Hierarchical Clustering
+
+Agglomerative clustering with configurable linkage criterion and distance threshold.
+
+```python
+pipeline = ReclinkPipeline.builder().cluster_hierarchical(
+    linkage="average",
+    threshold=0.7
+)
+```
+
+Linkage options: `"single"`, `"complete"`, `"average"`.
+
+## Incremental Clustering
+
+Streaming clusterer that assigns records one at a time. Each cluster maintains a representative string, and new records join the most similar cluster or start a new one.
+
+```python
+from reclink import IncrementalCluster
+
+cluster = IncrementalCluster(metric="jaro_winkler", threshold=0.85)
+
+cluster_id, is_new, similarity = cluster.add_record("John Smith")
+# (0, True, None) — new cluster created
+
+cluster_id, is_new, similarity = cluster.add_record("Jon Smith")
+# (0, False, 0.91) — joined existing cluster
+
+cluster_id, is_new, similarity = cluster.add_record("Alice Johnson")
+# (1, True, None) — new cluster
+
+clusters = cluster.get_clusters()
+# [[0, 1], [2]]
+```
+
+## DBSCAN
+
+Density-based clustering that discovers clusters automatically without a predefined count. Points in sparse regions are classified as noise.
+
+```python
+from reclink import dbscan_cluster
+
+similarities = [
+    (0, 1, 0.9), (1, 2, 0.9), (0, 2, 0.85),  # Cluster 1
+    (3, 4, 0.9), (4, 5, 0.9), (3, 5, 0.85),  # Cluster 2
+]
+
+clusters, noise, labels = dbscan_cluster(
+    num_nodes=6,
+    similarities=similarities,
+    min_similarity=0.8,
+    min_samples=2,
+)
+# clusters: [[0, 1, 2], [3, 4, 5]]
+# noise: []
+```
+
+## OPTICS
+
+Extension of DBSCAN for varying-density clusters. Produces a reachability ordering from which clusters can be extracted at different density levels.
+
+```python
+from reclink import optics_cluster
+
+clusters, noise = optics_cluster(
+    num_nodes=6,
+    similarities=similarities,
+    min_samples=2,
+    extract_threshold=0.8,
+)
+```
+
+---
+
+## Quality Metrics
+
+Measure how well records are grouped after clustering.
+
+### Silhouette Score
+
+Measures how similar a point is to its own cluster versus the nearest other cluster. Range: \[-1, 1\], higher is better.
+
+```python
+from reclink import silhouette_score
+
+score = silhouette_score(
+    num_nodes=4,
+    similarities=[(0, 1, 0.95), (2, 3, 0.95), (0, 2, 0.1), (1, 3, 0.1)],
+    labels=[0, 0, 1, 1],
+)
+# score > 0.5 indicates good clustering
+```
+
+### Davies-Bouldin Index
+
+Ratio of within-cluster scatter to between-cluster separation. Lower values indicate better clustering.
+
+```python
+from reclink import davies_bouldin_index
+
+db = davies_bouldin_index(
+    num_nodes=4,
+    similarities=[(0, 1, 0.95), (2, 3, 0.95), (0, 2, 0.1), (1, 3, 0.1)],
+    labels=[0, 0, 1, 1],
+)
+# db < 1.0 indicates well-separated clusters
+```

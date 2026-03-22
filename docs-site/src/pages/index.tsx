@@ -6,9 +6,9 @@ import Heading from '@theme/Heading';
 
 const features = [
   {
-    title: '20+ String Metrics',
+    title: '21 String Metrics',
     description:
-      'Edit distance, token-based, subsequence, alignment, and hybrid metrics — all implemented from scratch in Rust.',
+      'Edit distance, token-based, subsequence, alignment, and hybrid metrics — including Ratcliff-Obershelp, Needleman-Wunsch, Gotoh, and Monge-Elkan.',
   },
   {
     title: 'Rust-Powered Speed',
@@ -18,7 +18,7 @@ const features = [
   {
     title: 'Record Linkage Pipeline',
     description:
-      'Full pipeline with 9 blocking strategies, field comparators, Fellegi-Sunter classification, and clustering.',
+      'Full pipeline with 11 blocking strategies, field comparators, 8 classifiers, DBSCAN/OPTICS clustering, and quality metrics.',
   },
   {
     title: 'Pandas & Polars Integration',
@@ -26,9 +26,9 @@ const features = [
       'DataFrame accessors for fuzzy merge, phonetic encoding, and deduplication. Native Polars plugin for zero-GIL overhead.',
   },
   {
-    title: '7 Phonetic Algorithms',
+    title: '10 Phonetic Algorithms',
     description:
-      'Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone, Cologne, and Beider-Morse with language detection.',
+      'Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone, Cologne, Beider-Morse, Phonex, MRA, and Daitch-Mokotoff.',
   },
   {
     title: 'Interactive Playground',
@@ -42,7 +42,7 @@ function HomepageHeader(): ReactNode {
   return (
     <header className="hero-banner">
       <div className="container">
-        <img src="img/icon.png" alt="reclink" className="hero-logo" />
+        <img src="img/icon.png" alt="reclink" className="hero-logo" style={{width: 120, height: 120}} />
         <Heading as="h1">{siteConfig.title}</Heading>
         <p>{siteConfig.tagline}</p>
         <div className="install-command">pip install reclink</div>
@@ -54,7 +54,7 @@ function HomepageHeader(): ReactNode {
           </Link>
           <Link
             className="button button--outline button--lg"
-            to="/docs/playground">
+            to="/docs/playground/string-metrics">
             Try Playground
           </Link>
           <Link
@@ -104,7 +104,8 @@ function BenchmarkSection(): ReactNode {
       <p style={{textAlign: 'center', maxWidth: 600, margin: '0 auto 1rem'}}>
         Pairwise comparison benchmarks (microseconds per pair, lower is better):
       </p>
-      <table style={{maxWidth: 700, margin: '0 auto'}}>
+      <div style={{display: 'flex', justifyContent: 'center'}}>
+      <table>
         <thead>
           <tr>
             <th>Metric</th>
@@ -116,24 +117,25 @@ function BenchmarkSection(): ReactNode {
         <tbody>
           <tr>
             <td>levenshtein</td>
-            <td>0.55 us</td>
-            <td>0.18 us</td>
-            <td>1.28 us</td>
+            <td>0.55 μs</td>
+            <td>0.18 μs</td>
+            <td>1.28 μs</td>
           </tr>
           <tr>
             <td>jaro_winkler</td>
-            <td>0.31 us</td>
-            <td>0.20 us</td>
-            <td>0.68 us</td>
+            <td>0.31 μs</td>
+            <td>0.20 μs</td>
+            <td>0.68 μs</td>
           </tr>
           <tr>
             <td>damerau_levenshtein</td>
-            <td>0.93 us</td>
-            <td>0.24 us</td>
-            <td>2.41 us</td>
+            <td>0.93 μs</td>
+            <td>0.24 μs</td>
+            <td>2.41 μs</td>
           </tr>
         </tbody>
       </table>
+      </div>
       <p style={{textAlign: 'center', marginTop: '1rem', fontSize: '0.9rem', color: 'var(--ifm-color-emphasis-600)'}}>
         2-3x faster than jellyfish, 5x faster than thefuzz — with a far richer feature set.
       </p>
@@ -145,7 +147,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Blazing-fast fuzzy matching and record linkage"
-      description="Rust-powered fuzzy matching and record linkage library with Python bindings. 20+ string metrics, phonetic algorithms, record linkage pipeline, and DataFrame integration.">
+      description="Rust-powered fuzzy matching and record linkage library with Python bindings. 21 string metrics, 10 phonetic algorithms, record linkage pipeline, and DataFrame integration.">
       <HomepageHeader />
       <main>
         <section className="features-section">

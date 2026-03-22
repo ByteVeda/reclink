@@ -9,6 +9,7 @@ use crate::cluster::{ConnectedComponents, HierarchicalClustering, Linkage};
 use crate::compare::FieldComparator;
 use crate::error::{ReclinkError, Result};
 use crate::record::{CandidatePair, ClassifiedPair, ComparisonVector, MatchClass, RecordBatch};
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 /// Configuration for how matched pairs are clustered.
@@ -96,11 +97,12 @@ impl ReclinkPipeline {
     }
 
     fn generate_dedup_candidates(&self, records: &RecordBatch) -> Vec<CandidatePair> {
-        let all: Vec<Vec<CandidatePair>> = self
-            .blockers
-            .par_iter()
-            .map(|b| b.block_dedup(records))
-            .collect();
+        #[cfg(feature = "parallel")]
+        let iter = self.blockers.par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let iter = self.blockers.iter();
+
+        let all: Vec<Vec<CandidatePair>> = iter.map(|b| b.block_dedup(records)).collect();
         dedup_pairs(all)
     }
 
@@ -109,11 +111,12 @@ impl ReclinkPipeline {
         left: &RecordBatch,
         right: &RecordBatch,
     ) -> Vec<CandidatePair> {
-        let all: Vec<Vec<CandidatePair>> = self
-            .blockers
-            .par_iter()
-            .map(|b| b.block_link(left, right))
-            .collect();
+        #[cfg(feature = "parallel")]
+        let iter = self.blockers.par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let iter = self.blockers.iter();
+
+        let all: Vec<Vec<CandidatePair>> = iter.map(|b| b.block_link(left, right)).collect();
         dedup_pairs(all)
     }
 
@@ -124,30 +127,34 @@ impl ReclinkPipeline {
         candidates: &[CandidatePair],
     ) -> Vec<ComparisonVector> {
         let n = self.comparators.len();
-        candidates
-            .par_iter()
-            .map(|pair| {
-                let mut scores = vec![0.0; n];
-                for (i, cmp) in self.comparators.iter().enumerate() {
-                    let left_val = left.records[pair.left]
-                        .get(cmp.field_name())
-                        .cloned()
-                        .unwrap_or(crate::record::FieldValue::Null);
-                    let right_val = right.records[pair.right]
-                        .get(cmp.field_name())
-                        .cloned()
-                        .unwrap_or(crate::record::FieldValue::Null);
-                    scores[i] = cmp.compare(&left_val, &right_val);
-                    if self.classifier.can_reject_early(&scores, n) {
-                        break; // remaining scores stay 0.0
-                    }
+
+        #[cfg(feature = "parallel")]
+        let iter = candidates.par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let iter = candidates.iter();
+
+        iter.map(|pair| {
+            let mut scores = vec![0.0; n];
+            for (i, cmp) in self.comparators.iter().enumerate() {
+                let left_val = left.records[pair.left]
+                    .get(cmp.field_name())
+                    .cloned()
+                    .unwrap_or(crate::record::FieldValue::Null);
+                let right_val = right.records[pair.right]
+                    .get(cmp.field_name())
+                    .cloned()
+                    .unwrap_or(crate::record::FieldValue::Null);
+                scores[i] = cmp.compare(&left_val, &right_val);
+                if self.classifier.can_reject_early(&scores, n) {
+                    break; // remaining scores stay 0.0
                 }
-                ComparisonVector {
-                    pair: *pair,
-                    scores,
-                }
-            })
-            .collect()
+            }
+            ComparisonVector {
+                pair: *pair,
+                scores,
+            }
+        })
+        .collect()
     }
 }
 

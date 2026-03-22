@@ -1,0 +1,17 @@
+---
+title: Preprocessing
+description: Build and test text preprocessing pipelines
+---
+
+import BrowserOnly from '@docusaurus/BrowserOnly';
+
+# Preprocessing
+
+Build preprocessing pipelines by selecting operations and see the step-by-step transformation.
+
+<BrowserOnly>
+  {() => {
+    const Preprocessing = require('@site/src/components/playground/Preprocessing').default;
+    return <Preprocessing />;
+  }}
+</BrowserOnly>

@@ -1,0 +1,17 @@
+---
+title: Index Structures
+description: Build and query BK-tree, VP-tree, N-gram, and MinHash indexes
+---
+
+import BrowserOnly from '@docusaurus/BrowserOnly';
+
+# Index Structures
+
+Build index structures for efficient nearest-neighbor search, then query them interactively.
+
+<BrowserOnly>
+  {() => {
+    const IndexStructures = require('@site/src/components/playground/IndexStructures').default;
+    return <IndexStructures />;
+  }}
+</BrowserOnly>
