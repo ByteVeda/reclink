@@ -6,18 +6,24 @@
 pub mod beider_morse;
 mod caverphone;
 mod cologne;
+mod daitch_mokotoff;
 mod double_metaphone;
 mod metaphone;
+mod mra;
 mod nysiis;
+mod phonex;
 mod soundex;
 
 pub use beider_morse::language::{detect_language, Language};
 pub use beider_morse::BeiderMorse;
 pub use caverphone::Caverphone;
 pub use cologne::ColognePhonetic;
+pub use daitch_mokotoff::DaitchMokotoff;
 pub use double_metaphone::DoubleMetaphone;
 pub use metaphone::Metaphone;
+pub use mra::{mra_compare, MatchRatingApproach};
 pub use nysiis::Nysiis;
+pub use phonex::Phonex;
 pub use soundex::Soundex;
 
 /// Trait for phonetic encoding algorithms.
@@ -53,6 +59,12 @@ pub enum PhoneticAlgorithm {
     ColognePhonetic(ColognePhonetic),
     /// Beider-Morse Phonetic Matching.
     BeiderMorse(BeiderMorse),
+    /// Phonex (improved Soundex).
+    Phonex(Phonex),
+    /// Match Rating Approach.
+    MatchRatingApproach(MatchRatingApproach),
+    /// Daitch-Mokotoff Soundex.
+    DaitchMokotoff(DaitchMokotoff),
 }
 
 impl PhoneticEncoder for PhoneticAlgorithm {
@@ -65,6 +77,9 @@ impl PhoneticEncoder for PhoneticAlgorithm {
             PhoneticAlgorithm::Caverphone(e) => e.encode(s),
             PhoneticAlgorithm::ColognePhonetic(e) => e.encode(s),
             PhoneticAlgorithm::BeiderMorse(e) => e.encode(s),
+            PhoneticAlgorithm::Phonex(e) => e.encode(s),
+            PhoneticAlgorithm::MatchRatingApproach(e) => e.encode(s),
+            PhoneticAlgorithm::DaitchMokotoff(e) => e.encode(s),
         }
     }
 }

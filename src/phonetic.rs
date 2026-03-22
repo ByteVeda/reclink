@@ -49,6 +49,34 @@ fn beider_morse(s: &str, ashkenazi: bool) -> String {
     encoder.encode(s)
 }
 
+/// Compute the Phonex (improved Soundex) code for a string.
+#[pyfunction]
+fn phonex(s: &str) -> String {
+    phonetic_mod::Phonex.encode(s)
+}
+
+/// Compute the Match Rating Approach code for a string.
+#[pyfunction]
+fn mra(s: &str) -> String {
+    phonetic_mod::MatchRatingApproach.encode(s)
+}
+
+/// Compare two strings using the Match Rating Approach.
+///
+/// Returns True if the strings are considered a phonetic match.
+#[pyfunction]
+fn mra_compare(a: &str, b: &str) -> bool {
+    phonetic_mod::mra_compare(a, b)
+}
+
+/// Compute the Daitch-Mokotoff Soundex code for a string.
+///
+/// Returns comma-separated codes when multiple alternatives exist.
+#[pyfunction]
+fn daitch_mokotoff(s: &str) -> String {
+    phonetic_mod::DaitchMokotoff.encode(s)
+}
+
 /// Detect the most likely language/origin of a name.
 ///
 /// Returns a string such as "english", "german", "french", "spanish",
@@ -67,5 +95,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cologne_phonetic, m)?)?;
     m.add_function(wrap_pyfunction!(beider_morse, m)?)?;
     m.add_function(wrap_pyfunction!(detect_language, m)?)?;
+    m.add_function(wrap_pyfunction!(phonex, m)?)?;
+    m.add_function(wrap_pyfunction!(mra, m)?)?;
+    m.add_function(wrap_pyfunction!(mra_compare, m)?)?;
+    m.add_function(wrap_pyfunction!(daitch_mokotoff, m)?)?;
     Ok(())
 }
