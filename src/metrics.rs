@@ -449,6 +449,42 @@ fn levenshtein_align(a: &str, b: &str) -> std::collections::HashMap<String, PyOb
     result
 }
 
+/// Compute Ratcliff-Obershelp (Gestalt Pattern Matching) similarity.
+#[pyfunction]
+fn ratcliff_obershelp(a: &str, b: &str) -> f64 {
+    reclink_core::metrics::RatcliffObershelp.similarity(a, b)
+}
+
+/// Compute Needleman-Wunsch global alignment similarity.
+#[pyfunction]
+fn needleman_wunsch(a: &str, b: &str) -> f64 {
+    reclink_core::metrics::NeedlemanWunsch::default().similarity(a, b)
+}
+
+/// Compute Gotoh (affine gap penalty) global alignment similarity.
+#[pyfunction]
+fn gotoh(a: &str, b: &str) -> f64 {
+    reclink_core::metrics::Gotoh::default().similarity(a, b)
+}
+
+/// Compute Monge-Elkan token-based similarity.
+///
+/// For each token in `a`, finds the best match in `b` using the inner metric.
+/// Returns the average of these best matches.
+#[pyfunction]
+#[pyo3(signature = (a, b, inner_metric=None))]
+fn monge_elkan(a: &str, b: &str, inner_metric: Option<&str>) -> PyResult<f64> {
+    let inner = match inner_metric {
+        Some(name) => reclink_core::metrics::metric_from_name(name)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?,
+        None => reclink_core::metrics::Metric::default(),
+    };
+    let me = reclink_core::metrics::MongeElkan {
+        inner_metric: Box::new(inner),
+    };
+    Ok(me.similarity(a, b))
+}
+
 /// Set the maximum string length (in characters) for metric computation.
 ///
 /// Strings exceeding this limit will return 0.0 similarity without computing
@@ -495,6 +531,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(match_batch, m)?)?;
     m.add_function(wrap_pyfunction!(cdist, m)?)?;
     m.add_function(wrap_pyfunction!(levenshtein_align, m)?)?;
+    m.add_function(wrap_pyfunction!(ratcliff_obershelp, m)?)?;
+    m.add_function(wrap_pyfunction!(needleman_wunsch, m)?)?;
+    m.add_function(wrap_pyfunction!(gotoh, m)?)?;
+    m.add_function(wrap_pyfunction!(monge_elkan, m)?)?;
     m.add_function(wrap_pyfunction!(set_max_string_length, m)?)?;
     m.add_function(wrap_pyfunction!(get_max_string_length, m)?)?;
     m.add_function(wrap_pyfunction!(register_metric, m)?)?;

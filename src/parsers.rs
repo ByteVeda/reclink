@@ -140,6 +140,15 @@ pub fn parse_phonetic_algorithm(name: &str) -> PyResult<phonetic_mod::PhoneticAl
         "beider_morse" => Ok(phonetic_mod::PhoneticAlgorithm::BeiderMorse(
             phonetic_mod::BeiderMorse::new(),
         )),
+        "phonex" => Ok(phonetic_mod::PhoneticAlgorithm::Phonex(
+            phonetic_mod::Phonex,
+        )),
+        "mra" | "match_rating_approach" => Ok(
+            phonetic_mod::PhoneticAlgorithm::MatchRatingApproach(phonetic_mod::MatchRatingApproach),
+        ),
+        "daitch_mokotoff" => Ok(phonetic_mod::PhoneticAlgorithm::DaitchMokotoff(
+            phonetic_mod::DaitchMokotoff,
+        )),
         _ => Err(PyValueError::new_err(format!(
             "unknown phonetic algorithm: {name}"
         ))),

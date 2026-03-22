@@ -38,3 +38,47 @@ class TestNysiis:
 
     def test_empty(self) -> None:
         assert reclink.nysiis("") == ""
+
+
+class TestPhonex:
+    def test_smith(self) -> None:
+        assert reclink.phonex("Smith") == "S530"
+        assert reclink.phonex("Smyth") == "S530"
+
+    def test_empty(self) -> None:
+        assert reclink.phonex("") == "0000"
+
+    def test_prefix_kn(self) -> None:
+        code = reclink.phonex("Knight")
+        assert code.startswith("N")
+
+
+class TestMRA:
+    def test_encode(self) -> None:
+        assert reclink.mra("Smith") == "SMTH"
+
+    def test_compare_similar(self) -> None:
+        assert reclink.mra_compare("Smith", "Smyth")
+
+    def test_compare_different(self) -> None:
+        assert not reclink.mra_compare("Smith", "Jones")
+
+    def test_empty(self) -> None:
+        assert reclink.mra("") == ""
+
+
+class TestDaitchMokotoff:
+    def test_basic(self) -> None:
+        code = reclink.daitch_mokotoff("Schwartz")
+        # Should be 6-digit codes
+        for c in code.split(","):
+            assert len(c) == 6
+            assert c.isdigit()
+
+    def test_empty(self) -> None:
+        assert reclink.daitch_mokotoff("") == "000000"
+
+    def test_branching(self) -> None:
+        # CH rules produce multiple codes
+        code = reclink.daitch_mokotoff("Chaim")
+        assert "," in code  # Multiple codes from branching

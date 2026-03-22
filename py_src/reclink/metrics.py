@@ -23,6 +23,9 @@ from reclink._core import (
     damerau_levenshtein_threshold as _damerau_levenshtein_threshold,
 )
 from reclink._core import (
+    gotoh as _gotoh,
+)
+from reclink._core import (
     hamming as _hamming,
 )
 from reclink._core import (
@@ -65,6 +68,12 @@ from reclink._core import (
     match_best as _match_best,
 )
 from reclink._core import (
+    monge_elkan as _monge_elkan,
+)
+from reclink._core import (
+    needleman_wunsch as _needleman_wunsch,
+)
+from reclink._core import (
     ngram_similarity as _ngram_similarity,
 )
 from reclink._core import (
@@ -72,6 +81,9 @@ from reclink._core import (
 )
 from reclink._core import (
     phonetic_hybrid as _phonetic_hybrid,
+)
+from reclink._core import (
+    ratcliff_obershelp as _ratcliff_obershelp,
 )
 from reclink._core import (
     smith_waterman as _smith_waterman,
@@ -794,3 +806,114 @@ def cdist(
     (2, 2)
     """
     return _cdist(list(a), list(b), scorer, workers)
+
+
+def ratcliff_obershelp(a: str, b: str) -> float:
+    """Compute Ratcliff-Obershelp (Gestalt Pattern Matching) similarity.
+
+    Recursively finds the longest common substring, then recursively
+    matches the remaining left and right portions.
+
+    Parameters
+    ----------
+    a : str
+        First string.
+    b : str
+        Second string.
+
+    Returns
+    -------
+    float
+        Similarity score in [0, 1], where 1 means identical.
+
+    Examples
+    --------
+    >>> ratcliff_obershelp("abcde", "abdce")
+    0.8
+    """
+    return _ratcliff_obershelp(a, b)
+
+
+def needleman_wunsch(a: str, b: str) -> float:
+    """Compute Needleman-Wunsch global alignment similarity.
+
+    Uses dynamic programming for global sequence alignment with
+    default parameters (match=2, mismatch=-1, gap=-1).
+
+    Parameters
+    ----------
+    a : str
+        First string.
+    b : str
+        Second string.
+
+    Returns
+    -------
+    float
+        Similarity score in [0, 1], where 1 means identical.
+
+    Examples
+    --------
+    >>> needleman_wunsch("kitten", "sitting")
+    0.5
+    """
+    return _needleman_wunsch(a, b)
+
+
+def gotoh(a: str, b: str) -> float:
+    """Compute Gotoh (affine gap penalty) global alignment similarity.
+
+    Extends Needleman-Wunsch with separate gap-open and gap-extend
+    costs, better modeling biological insertions/deletions.
+
+    Parameters
+    ----------
+    a : str
+        First string.
+    b : str
+        Second string.
+
+    Returns
+    -------
+    float
+        Similarity score in [0, 1], where 1 means identical.
+
+    Examples
+    --------
+    >>> gotoh("kitten", "sitting")
+    0.4
+    """
+    return _gotoh(a, b)
+
+
+def monge_elkan(
+    a: str,
+    b: str,
+    inner_metric: Scorer | None = None,
+) -> float:
+    """Compute Monge-Elkan token-based similarity.
+
+    For each token in ``a``, finds the best-matching token in ``b``
+    using the inner metric. Returns the average of best matches.
+
+    Parameters
+    ----------
+    a : str
+        First string.
+    b : str
+        Second string.
+    inner_metric : str or None, optional
+        Name of the inner metric for token comparison.
+        Default is ``"jaro_winkler"``.
+
+    Returns
+    -------
+    float
+        Similarity score in [0, 1], where 1 means identical.
+
+    Examples
+    --------
+    >>> monge_elkan("john smith", "smith john")
+    1.0
+    """
+    return _monge_elkan(a, b, inner_metric)

@@ -704,11 +704,75 @@ impl PyPipeline {
     }
 }
 
+/// Incremental (streaming) clusterer.
+///
+/// Assigns records to clusters one at a time. Each cluster has a representative
+/// string, and new records join the most similar cluster (if above threshold)
+/// or start a new cluster.
+#[pyclass]
+pub struct PyIncrementalCluster {
+    inner: reclink_core::cluster::IncrementalCluster,
+}
+
+#[pymethods]
+impl PyIncrementalCluster {
+    /// Create a new incremental clusterer.
+    ///
+    /// Parameters
+    /// ----------
+    /// metric : str
+    ///     Metric name (default "jaro_winkler").
+    /// threshold : float
+    ///     Minimum similarity to join an existing cluster (default 0.85).
+    #[new]
+    #[pyo3(signature = (metric="jaro_winkler", threshold=0.85))]
+    fn new(metric: &str, threshold: f64) -> PyResult<Self> {
+        let m = reclink_core::metrics::metric_from_name(metric)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self {
+            inner: reclink_core::cluster::IncrementalCluster::new(m, threshold),
+        })
+    }
+
+    /// Add a record and assign it to a cluster.
+    ///
+    /// Returns a dict with ``cluster_id`` and either ``similarity`` (existing
+    /// cluster) or ``new`` (True if a new cluster was created).
+    fn add_record(&mut self, value: &str) -> (usize, bool, Option<f64>) {
+        let assignment = self.inner.add_record(value);
+        match assignment {
+            reclink_core::cluster::ClusterAssignment::Existing {
+                cluster_id,
+                similarity,
+            } => (cluster_id, false, Some(similarity)),
+            reclink_core::cluster::ClusterAssignment::New { cluster_id } => {
+                (cluster_id, true, None)
+            }
+        }
+    }
+
+    /// Return all clusters as lists of record indices.
+    fn get_clusters(&self) -> Vec<Vec<usize>> {
+        self.inner.get_clusters().to_vec()
+    }
+
+    /// Return the number of clusters.
+    fn cluster_count(&self) -> usize {
+        self.inner.cluster_count()
+    }
+
+    /// Return the number of records added.
+    fn record_count(&self) -> usize {
+        self.inner.record_count()
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(estimate_fellegi_sunter_params, m)?)?;
     m.add_class::<PyEmResult>()?;
     m.add_class::<PyRecord>()?;
     m.add_class::<PyMatchResult>()?;
     m.add_class::<PyPipeline>()?;
+    m.add_class::<PyIncrementalCluster>()?;
     Ok(())
 }

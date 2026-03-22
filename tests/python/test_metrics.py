@@ -633,3 +633,78 @@ class TestStreamingMatcher:
 
         results = list(match_stream("hello", gen(), threshold=0.5))
         assert len(results) >= 2
+
+
+class TestRatcliffObershelp:
+    def test_identical(self) -> None:
+        assert reclink.ratcliff_obershelp("hello", "hello") == pytest.approx(1.0)
+
+    def test_empty(self) -> None:
+        assert reclink.ratcliff_obershelp("", "") == pytest.approx(1.0)
+        assert reclink.ratcliff_obershelp("abc", "") == pytest.approx(0.0)
+
+    def test_known_value(self) -> None:
+        # Matches Python difflib.SequenceMatcher ratio
+        assert reclink.ratcliff_obershelp("abcde", "abdce") == pytest.approx(0.8)
+
+    def test_symmetry(self) -> None:
+        a = reclink.ratcliff_obershelp("abc", "bcd")
+        b = reclink.ratcliff_obershelp("bcd", "abc")
+        assert a == pytest.approx(b)
+
+
+class TestNeedlemanWunsch:
+    def test_identical(self) -> None:
+        assert reclink.needleman_wunsch("hello", "hello") == pytest.approx(1.0)
+
+    def test_empty(self) -> None:
+        assert reclink.needleman_wunsch("", "") == pytest.approx(1.0)
+        assert reclink.needleman_wunsch("abc", "") == pytest.approx(0.0)
+
+    def test_partial(self) -> None:
+        sim = reclink.needleman_wunsch("kitten", "sitting")
+        assert 0.0 < sim < 1.0
+
+    def test_symmetry(self) -> None:
+        a = reclink.needleman_wunsch("abc", "bcd")
+        b = reclink.needleman_wunsch("bcd", "abc")
+        assert a == pytest.approx(b)
+
+
+class TestGotoh:
+    def test_identical(self) -> None:
+        assert reclink.gotoh("hello", "hello") == pytest.approx(1.0)
+
+    def test_empty(self) -> None:
+        assert reclink.gotoh("", "") == pytest.approx(1.0)
+        assert reclink.gotoh("abc", "") == pytest.approx(0.0)
+
+    def test_partial(self) -> None:
+        sim = reclink.gotoh("kitten", "sitting")
+        assert 0.0 < sim < 1.0
+
+    def test_symmetry(self) -> None:
+        a = reclink.gotoh("abc", "bcd")
+        b = reclink.gotoh("bcd", "abc")
+        assert a == pytest.approx(b)
+
+
+class TestMongeElkan:
+    def test_identical(self) -> None:
+        assert reclink.monge_elkan("hello world", "hello world") == pytest.approx(1.0)
+
+    def test_empty(self) -> None:
+        assert reclink.monge_elkan("", "") == pytest.approx(1.0)
+        assert reclink.monge_elkan("abc", "") == pytest.approx(0.0)
+
+    def test_token_reorder(self) -> None:
+        # Each token finds its perfect match
+        assert reclink.monge_elkan("john smith", "smith john") == pytest.approx(1.0)
+
+    def test_partial_match(self) -> None:
+        sim = reclink.monge_elkan("john smith", "jon smyth")
+        assert 0.5 < sim < 1.0
+
+    def test_custom_inner(self) -> None:
+        sim = reclink.monge_elkan("hello world", "hello world", "levenshtein")
+        assert sim == pytest.approx(1.0)
