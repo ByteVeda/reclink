@@ -418,11 +418,131 @@ impl PyMinHashIndex {
     }
 }
 
+/// Bloom filter for fast probabilistic membership testing.
+#[pyclass]
+struct PyBloomFilter {
+    inner: reclink_core::index::BloomFilter,
+}
+
+#[pymethods]
+impl PyBloomFilter {
+    /// Create a new Bloom filter.
+    #[new]
+    #[pyo3(signature = (expected_items=1000, false_positive_rate=0.01))]
+    fn new(expected_items: usize, false_positive_rate: f64) -> Self {
+        Self {
+            inner: reclink_core::index::BloomFilter::with_capacity(
+                expected_items,
+                false_positive_rate,
+            ),
+        }
+    }
+
+    /// Insert a string into the filter.
+    fn insert(&mut self, item: &str) {
+        self.inner.insert(item);
+    }
+
+    /// Test if a string may be in the filter (no false negatives).
+    fn contains(&self, item: &str) -> bool {
+        self.inner.contains(item)
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn __contains__(&self, item: &str) -> bool {
+        self.inner.contains(item)
+    }
+
+    /// Approximate memory usage in bytes.
+    fn memory_usage(&self) -> String {
+        format_bytes(self.inner.memory_usage())
+    }
+
+    /// Estimated false positive rate given current count.
+    fn estimated_fp_rate(&self) -> f64 {
+        self.inner.estimated_fp_rate()
+    }
+}
+
+/// Inverted index for token-based candidate retrieval.
+#[pyclass]
+struct PyInvertedIndex {
+    inner: reclink_core::index::InvertedIndex,
+}
+
+#[pymethods]
+impl PyInvertedIndex {
+    /// Build an inverted index from strings.
+    ///
+    /// Parameters
+    /// ----------
+    /// strings : list of str
+    ///     Strings to index.
+    /// tokenizer : str
+    ///     Tokenization method: "whitespace" or "ngram:N" (e.g. "ngram:2").
+    #[staticmethod]
+    #[pyo3(signature = (strings, tokenizer="whitespace"))]
+    fn build(strings: Vec<String>, tokenizer: &str) -> PyResult<Self> {
+        let tok_kind = parse_tokenizer(tokenizer)?;
+        let refs: Vec<&str> = strings.iter().map(|s| s.as_str()).collect();
+        Ok(Self {
+            inner: reclink_core::index::InvertedIndex::build(&refs, tok_kind),
+        })
+    }
+
+    /// Search for records sharing at least min_shared tokens with query.
+    fn search(&self, query: &str, min_shared: usize) -> Vec<(String, usize, usize)> {
+        self.inner
+            .search(query, min_shared)
+            .into_iter()
+            .map(|r| (r.value, r.index, r.shared_tokens))
+            .collect()
+    }
+
+    /// Return top-k records by shared token count.
+    fn search_top_k(&self, query: &str, k: usize) -> Vec<(String, usize, usize)> {
+        self.inner
+            .search_top_k(query, k)
+            .into_iter()
+            .map(|r| (r.value, r.index, r.shared_tokens))
+            .collect()
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Number of unique tokens in the index.
+    fn vocab_size(&self) -> usize {
+        self.inner.vocab_size()
+    }
+}
+
+fn parse_tokenizer(s: &str) -> PyResult<reclink_core::index::TokenizerKind> {
+    if s == "whitespace" {
+        Ok(reclink_core::index::TokenizerKind::Whitespace)
+    } else if let Some(n_str) = s.strip_prefix("ngram:") {
+        let n: usize = n_str
+            .parse()
+            .map_err(|_| PyValueError::new_err(format!("invalid ngram size: {n_str}")))?;
+        Ok(reclink_core::index::TokenizerKind::Ngram(n))
+    } else {
+        Err(PyValueError::new_err(format!(
+            "unknown tokenizer: {s}. Expected: 'whitespace' or 'ngram:N'"
+        )))
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBkTree>()?;
     m.add_class::<PyVpTree>()?;
     m.add_class::<PyNgramIndex>()?;
     m.add_class::<PyMmapNgramIndex>()?;
     m.add_class::<PyMinHashIndex>()?;
+    m.add_class::<PyBloomFilter>()?;
+    m.add_class::<PyInvertedIndex>()?;
     Ok(())
 }

@@ -767,8 +767,103 @@ impl PyIncrementalCluster {
     }
 }
 
+/// Compute silhouette score for a clustering.
+#[pyfunction]
+fn silhouette_score(
+    num_nodes: usize,
+    similarities: Vec<(usize, usize, f64)>,
+    labels: Vec<i32>,
+) -> f64 {
+    reclink_core::cluster::silhouette_score(num_nodes, &similarities, &labels)
+}
+
+/// Compute Davies-Bouldin index for a clustering.
+#[pyfunction]
+fn davies_bouldin_index(
+    num_nodes: usize,
+    similarities: Vec<(usize, usize, f64)>,
+    labels: Vec<i32>,
+) -> f64 {
+    reclink_core::cluster::davies_bouldin_index(num_nodes, &similarities, &labels)
+}
+
+/// Train a logistic regression classifier from labeled data.
+#[pyfunction]
+#[pyo3(signature = (vectors, labels, learning_rate=0.1, max_iterations=1000, regularization=0.01, threshold=0.5))]
+fn train_logistic_regression(
+    vectors: Vec<Vec<f64>>,
+    labels: Vec<bool>,
+    learning_rate: f64,
+    max_iterations: usize,
+    regularization: f64,
+    threshold: f64,
+) -> (Vec<f64>, f64, f64) {
+    let config = reclink_core::classify::LogisticRegressionConfig {
+        learning_rate,
+        max_iterations,
+        convergence_threshold: 1e-6,
+        regularization,
+        threshold,
+    };
+    let clf = reclink_core::classify::train_logistic_regression(&vectors, &labels, &config);
+    (clf.weights, clf.bias, clf.threshold)
+}
+
+/// Train a decision tree classifier from labeled data.
+#[pyfunction]
+#[pyo3(signature = (vectors, labels, max_depth=5, min_samples_leaf=5, min_samples_split=10, match_threshold=0.5))]
+fn train_decision_tree(
+    vectors: Vec<Vec<f64>>,
+    labels: Vec<bool>,
+    max_depth: usize,
+    min_samples_leaf: usize,
+    min_samples_split: usize,
+    match_threshold: f64,
+) -> PyResult<String> {
+    let config = reclink_core::classify::DecisionTreeConfig {
+        max_depth,
+        min_samples_leaf,
+        min_samples_split,
+        match_threshold,
+    };
+    let clf = reclink_core::classify::train_decision_tree(&vectors, &labels, &config);
+    serde_json::to_string(&clf).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+}
+
+/// Run DBSCAN clustering on pairwise similarities.
+#[pyfunction]
+fn dbscan_cluster(
+    num_nodes: usize,
+    similarities: Vec<(usize, usize, f64)>,
+    min_similarity: f64,
+    min_samples: usize,
+) -> (Vec<Vec<usize>>, Vec<usize>, Vec<i32>) {
+    let db = reclink_core::cluster::Dbscan::new(min_similarity, min_samples);
+    let result = db.cluster(num_nodes, &similarities);
+    (result.clusters, result.noise, result.labels)
+}
+
+/// Run OPTICS clustering on pairwise similarities.
+#[pyfunction]
+fn optics_cluster(
+    num_nodes: usize,
+    similarities: Vec<(usize, usize, f64)>,
+    min_samples: usize,
+    extract_threshold: f64,
+) -> (Vec<Vec<usize>>, Vec<usize>) {
+    let optics = reclink_core::cluster::Optics::new(min_samples, extract_threshold);
+    let result = optics.cluster(num_nodes, &similarities);
+    (result.clusters, result.noise)
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(estimate_fellegi_sunter_params, m)?)?;
+    m.add_function(wrap_pyfunction!(silhouette_score, m)?)?;
+    m.add_function(wrap_pyfunction!(davies_bouldin_index, m)?)?;
+    m.add_function(wrap_pyfunction!(train_logistic_regression, m)?)?;
+    m.add_function(wrap_pyfunction!(train_decision_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(dbscan_cluster, m)?)?;
+    m.add_function(wrap_pyfunction!(optics_cluster, m)?)?;
     m.add_class::<PyEmResult>()?;
     m.add_class::<PyRecord>()?;
     m.add_class::<PyMatchResult>()?;
