@@ -12,7 +12,7 @@ const config: Config = {
   },
 
   url: 'https://docs.byteveda.org',
-  baseUrl: '/',
+  baseUrl: '/reclink/',
 
   organizationName: 'ByteVeda',
   projectName: 'reclink',
