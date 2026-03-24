@@ -99,6 +99,11 @@ const config: Config = {
           label: 'Playground',
         },
         {
+          to: '/changelog',
+          label: 'Changelog',
+          position: 'left',
+        },
+        {
           href: 'https://github.com/ByteVeda/reclink',
           label: 'GitHub',
           position: 'right',
