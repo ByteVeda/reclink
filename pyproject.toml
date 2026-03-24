@@ -16,6 +16,7 @@ dependencies = [
 pandas = ["pandas>=1.5"]
 polars = ["polars>=0.20"]
 dev = [
+    "maturin>=1.7",
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     "pandas>=1.5",

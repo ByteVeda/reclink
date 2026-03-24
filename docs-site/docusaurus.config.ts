@@ -11,10 +11,10 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://reclink.dev',
-  baseUrl: '/',
+  url: 'https://docs.byteveda.org',
+  baseUrl: '/reclink/',
 
-  organizationName: 'pratyush618',
+  organizationName: 'ByteVeda',
   projectName: 'reclink',
 
   onBrokenLinks: 'throw',
@@ -50,7 +50,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/pratyush618/reclink/tree/main/docs-site/',
+          editUrl: 'https://github.com/ByteVeda/reclink/tree/main/docs-site/',
         },
         blog: false,
         theme: {
@@ -98,7 +98,7 @@ const config: Config = {
           label: 'Playground',
         },
         {
-          href: 'https://github.com/pratyush618/reclink',
+          href: 'https://github.com/ByteVeda/reclink',
           label: 'GitHub',
           position: 'right',
         },
@@ -125,7 +125,7 @@ const config: Config = {
         {
           title: 'More',
           items: [
-            {label: 'GitHub', href: 'https://github.com/pratyush618/reclink'},
+            {label: 'GitHub', href: 'https://github.com/ByteVeda/reclink'},
           ],
         },
       ],
