@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "reclink"
-version = "0.1.0"
+version = "0.1.1"
 description = "Blazing-fast fuzzy matching and record linkage library powered by Rust"
 readme = "README.md"
 requires-python = ">=3.12"

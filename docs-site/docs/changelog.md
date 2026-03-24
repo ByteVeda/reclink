@@ -10,6 +10,34 @@ All notable changes to reclink will be documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.1
+
+### Fixed
+
+- PyPI sdist now includes LICENSE file at package root
+- PyPI README logo renders correctly (absolute URL)
+- Type stubs: `Scorer` and `CompositePreset` accept `str` for custom metric support
+- `register_metric` has proper `@overload` signatures for all calling conventions
+- Clippy and ruff lint errors resolved across codebase
+- Mypy runs on test files with correct `--python-executable` for numpy resolution
+- WASM playground loads correctly under `/reclink/` base path
+- Internal doc links updated for `routeBasePath: '/'`
+
+### Added
+
+- Pre-commit hooks: cargo fmt, clippy, ruff check, ruff format, mypy
+- CI workflow with lint, rust-test, and cross-platform Python test matrix
+- GitHub Pages docs workflow with WASM build
+- PyPI release workflow with trusted publishing (OIDC) for 6 platform targets
+- PR cache cleanup workflow
+- Changelog page in docs site
+- PyPI metadata: badges, classifiers, keywords, project URLs
+
+### Changed
+
+- Docs served at `docs.byteveda.org/reclink/` via org-level GitHub Pages
+- Removed `/docs` prefix from doc routes (redundant with `docs.` subdomain)
+
 ## 0.1.0
 
 Initial release.
