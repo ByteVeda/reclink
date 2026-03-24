@@ -6,7 +6,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-type Scorer = Literal[
+type BuiltinScorer = Literal[
     "levenshtein",
     "damerau_levenshtein",
     "hamming",
@@ -30,6 +30,9 @@ type Scorer = Literal[
     "monge_elkan",
 ]
 
+# Accepts built-in metric names and custom metrics registered via register_metric()
+type Scorer = str
+
 type PhoneticAlgorithm = Literal[
     "soundex",
     "metaphone",
@@ -52,7 +55,8 @@ type Linkage = Literal["single", "complete", "average"]
 
 type CaseFoldLocale = Literal["default", "turkish"]
 
-type CompositePreset = Literal["name_matching", "address_matching", "general_purpose"]
+# Raises ValueError for unknown presets
+type CompositePreset = str
 
 # String metrics
 
