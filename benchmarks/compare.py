@@ -12,7 +12,6 @@ Generates a comparison table suitable for inclusion in README.md.
 from __future__ import annotations
 
 import statistics
-import sys
 import timeit
 from typing import Any
 
@@ -35,10 +34,26 @@ PAIRS = [
 
 BATCH_QUERY = "John Smith"
 BATCH_CANDIDATES = [
-    "Jon Smith", "Jane Doe", "John Smyth", "Robert Johnson", "Johnny Smith",
-    "Smith, John", "J. Smith", "Jonathan Smith", "John S.", "James Smith",
-    "Joan Smith", "John Schmidt", "Johnson Smith", "Johan Smit", "John Smithson",
-    "Jean Smith", "Juan Smith", "John Smiley", "John Smooth", "John Smart",
+    "Jon Smith",
+    "Jane Doe",
+    "John Smyth",
+    "Robert Johnson",
+    "Johnny Smith",
+    "Smith, John",
+    "J. Smith",
+    "Jonathan Smith",
+    "John S.",
+    "James Smith",
+    "Joan Smith",
+    "John Schmidt",
+    "Johnson Smith",
+    "Johan Smit",
+    "John Smithson",
+    "Jean Smith",
+    "Juan Smith",
+    "John Smiley",
+    "John Smooth",
+    "John Smart",
 ] * 50  # 1000 candidates
 
 NUMBER = 500  # iterations for pairwise benchmarks
@@ -49,9 +64,8 @@ BATCH_NUMBER = 50  # iterations for batch benchmarks
 # Benchmark runners
 # ---------------------------------------------------------------------------
 
-def bench_pairwise(
-    func: Any, pairs: list[tuple[str, str]], number: int = NUMBER
-) -> float:
+
+def bench_pairwise(func: Any, pairs: list[tuple[str, str]], number: int = NUMBER) -> float:
     """Return median microseconds per pair for a pairwise function."""
     times = timeit.repeat(
         lambda: [func(a, b) for a, b in pairs],
@@ -80,9 +94,11 @@ def bench_batch(func: Any, number: int = BATCH_NUMBER) -> float:
 # Library wrappers
 # ---------------------------------------------------------------------------
 
+
 def get_reclink_funcs() -> dict[str, Any]:
     """Get reclink benchmark functions."""
     import reclink
+
     return {
         "levenshtein": lambda a, b: reclink.levenshtein(a, b),
         "jaro": lambda a, b: reclink.jaro(a, b),
@@ -96,7 +112,8 @@ def get_reclink_funcs() -> dict[str, Any]:
 def get_rapidfuzz_funcs() -> dict[str, Any] | None:
     """Get rapidfuzz benchmark functions."""
     try:
-        from rapidfuzz import distance, fuzz, process
+        from rapidfuzz import distance, process
+
         return {
             "levenshtein": lambda a, b: distance.Levenshtein.distance(a, b),
             "jaro": lambda a, b: distance.Jaro.similarity(a, b),
@@ -104,7 +121,10 @@ def get_rapidfuzz_funcs() -> dict[str, Any] | None:
             "damerau_levenshtein": lambda a, b: distance.DamerauLevenshtein.distance(a, b),
             "hamming": None,
             "batch_jw": lambda q, c: process.extract(
-                q, c, scorer=distance.JaroWinkler.similarity, limit=len(c),
+                q,
+                c,
+                scorer=distance.JaroWinkler.similarity,
+                limit=len(c),
             ),
         }
     except ImportError:
@@ -115,6 +135,7 @@ def get_jellyfish_funcs() -> dict[str, Any] | None:
     """Get jellyfish benchmark functions."""
     try:
         import jellyfish
+
         return {
             "levenshtein": lambda a, b: jellyfish.levenshtein_distance(a, b),
             "jaro": lambda a, b: jellyfish.jaro_similarity(a, b),
@@ -131,6 +152,7 @@ def get_thefuzz_funcs() -> dict[str, Any] | None:
     """Get thefuzz benchmark functions."""
     try:
         from thefuzz import fuzz, process
+
         return {
             "levenshtein": None,  # thefuzz doesn't expose raw levenshtein
             "jaro": None,
@@ -147,6 +169,7 @@ def get_thefuzz_funcs() -> dict[str, Any] | None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def format_cell(us: float | None) -> str:
     """Format a cell value."""
     if us is None:
@@ -161,7 +184,7 @@ def speedup(reclink_us: float, other_us: float | None) -> str:
     ratio = other_us / reclink_us
     if ratio >= 1:
         return f"**{ratio:.1f}x faster**"
-    return f"{1/ratio:.1f}x slower"
+    return f"{1 / ratio:.1f}x slower"
 
 
 def main() -> None:

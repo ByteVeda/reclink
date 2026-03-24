@@ -19,7 +19,7 @@ fn field_value_as_integer() {
 
 #[test]
 fn field_value_as_float() {
-    assert_eq!(FieldValue::Float(3.14).as_float(), Some(3.14));
+    assert_eq!(FieldValue::Float(2.72).as_float(), Some(2.72));
     assert_eq!(FieldValue::Text("hello".into()).as_float(), None);
     assert_eq!(FieldValue::Integer(42).as_float(), None);
     assert_eq!(FieldValue::Null.as_float(), None);
@@ -38,7 +38,7 @@ fn field_value_is_null() {
 fn field_value_display() {
     assert_eq!(FieldValue::Text("hello".into()).to_string(), "hello");
     assert_eq!(FieldValue::Integer(42).to_string(), "42");
-    assert_eq!(FieldValue::Float(3.14).to_string(), "3.14");
+    assert_eq!(FieldValue::Float(2.72).to_string(), "2.72");
     assert_eq!(
         FieldValue::Date("2024-01-01".into()).to_string(),
         "2024-01-01"
