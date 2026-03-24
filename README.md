@@ -6,18 +6,27 @@
 
 <p align="center">Blazing-fast fuzzy matching and record linkage library powered by Rust.</p>
 
+<p align="center">
+  <a href="https://pypi.org/project/reclink/"><img src="https://img.shields.io/pypi/v/reclink" alt="PyPI"></a>
+  <a href="https://pypi.org/project/reclink/"><img src="https://img.shields.io/pypi/pyversions/reclink" alt="Python"></a>
+  <a href="https://github.com/ByteVeda/reclink/actions/workflows/ci.yml"><img src="https://github.com/ByteVeda/reclink/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ByteVeda/reclink/blob/master/LICENSE"><img src="https://img.shields.io/github/license/ByteVeda/reclink" alt="License"></a>
+</p>
+
 ## Features
 
-- **20+ string similarity metrics** — edit distance, token-based, subsequence, alignment, and more
-- **7 phonetic algorithms** — Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone, Cologne, Beider-Morse
+- **21 string similarity metrics** — edit distance, token-based, subsequence, alignment, and hybrid metrics
+- **10 phonetic algorithms** — Soundex, Metaphone, Double Metaphone, NYSIIS, Caverphone, Cologne, Beider-Morse, Phonex, MRA, Daitch-Mokotoff
 - **Full record linkage pipeline** — blocking, comparison, classification, and clustering
-- **9 blocking strategies** — exact, phonetic, sorted neighborhood, q-gram, LSH, canopy, trie, numeric, date
-- **Fellegi-Sunter with EM estimation** — unsupervised probabilistic matching out of the box
-- **Index structures** — BK-tree, VP-tree, N-gram index, memory-mapped N-gram, and MinHash/LSH
+- **11 blocking strategies** — exact, phonetic, sorted neighborhood, q-gram, LSH, canopy, trie, numeric, date, hybrid (union/intersection)
+- **8 classifiers** — threshold, weighted, bands, Fellegi-Sunter with EM estimation, logistic regression, decision tree
+- **5 clustering algorithms** — connected components, hierarchical, DBSCAN, OPTICS, incremental
+- **7 index structures** — BK-tree, VP-tree, N-gram index, memory-mapped N-gram, MinHash LSH, Bloom filter, inverted index
 - **DataFrame integration** — pandas and polars accessors, native Polars plugin
 - **Parallel computation** — Rayon-powered `cdist` and pipeline execution
 - **Scoring presets & composite scorer** — pre-tuned configs for name, address, and general-purpose matching
 - **Extensible plugin system** — register custom metrics, blockers, comparators, classifiers, and preprocessors
+- **WASM bindings** — run reclink in the browser
 
 ## Installation
 
@@ -28,7 +37,7 @@ pip install reclink
 ### Build from source
 
 ```bash
-git clone https://github.com/pratyush618/reclink.git
+git clone https://github.com/ByteVeda/reclink.git
 cd reclink
 uv sync --extra dev
 maturin develop --release
@@ -68,20 +77,21 @@ print(matches)
 ### Direct metric usage
 
 ```python
-from reclink import jaro_winkler_similarity, soundex, cdist
+from reclink import jaro_winkler, soundex, cdist
 
-jaro_winkler_similarity("Jon", "John")  # 0.93...
-soundex("Smith") == soundex("Smyth")    # True
+jaro_winkler("Jon", "John")  # 0.93...
+soundex("Smith") == soundex("Smyth")  # True
 cdist(["Jon", "Jane"], ["John", "Janet"], scorer="jaro_winkler")  # 2x2 numpy array
 ```
 
 ## Documentation
 
-Full documentation is available at [reclink.dev](https://reclink.dev), including:
+Full documentation at [docs.byteveda.org/reclink](https://docs.byteveda.org/reclink/), including:
 
-- **API Reference** — every metric, algorithm, and class
-- **Guides** — pipelines, preprocessing, DataFrames, custom plugins, and more
-- **Interactive Playground** — try reclink directly in your browser
+- **[API Reference](https://docs.byteveda.org/reclink/api/string-metrics)** — every metric, algorithm, and class
+- **[Guides](https://docs.byteveda.org/reclink/guides/name-matching)** — pipelines, preprocessing, DataFrames, custom plugins
+- **[Interactive Playground](https://docs.byteveda.org/reclink/playground/)** — try reclink in your browser (WASM-powered)
+- **[Changelog](https://docs.byteveda.org/reclink/changelog)** — release history
 
 ## Performance
 
@@ -107,14 +117,13 @@ Reproduce with `python benchmarks/compare.py` (requires `pip install rapidfuzz j
 ```bash
 # Setup
 uv sync --extra dev
+uv run pre-commit install
 maturin develop --release
 
 # Rust
-cargo build
 cargo test --workspace
 cargo clippy -- -D warnings
 cargo fmt --check
-cargo bench -p reclink-core
 
 # Python
 uv run pytest tests/python/ -v
