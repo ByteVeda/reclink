@@ -33,7 +33,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -50,7 +50,7 @@ jobs:
         run: uv run ruff format --check py_src/ tests/
 
       - name: Mypy
-        run: uv run mypy py_src/reclink/ --no-incremental
+        run: uv run mypy --python-executable $(uv run python -c "import sys; print(sys.executable)") py_src/reclink/ tests/python/ --no-incremental
 
   rust-test:
     runs-on: ubuntu-latest

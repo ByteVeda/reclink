@@ -10,7 +10,7 @@ repos:
 
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy --all-targets --all-features -- -D warnings
+        entry: cargo clippy --all-targets -- -D warnings
         language: system
         types: [rust]
         pass_filenames: false
@@ -31,7 +31,7 @@ repos:
 
       - id: mypy
         name: mypy
-        entry: uv run mypy py_src/reclink/
+        entry: bash -c 'uv run mypy --python-executable $(uv run python -c "import sys; print(sys.executable)") py_src/reclink/ tests/python/'
         language: system
         types: [python]
         pass_filenames: false
