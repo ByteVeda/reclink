@@ -3,7 +3,10 @@ name = "reclink-py"
 version = "0.1.0"
 edition = "2021"
 description = "PyO3 bindings for the reclink library"
-license = "MIT"
+license = "Apache-2.0"
+license-file = "../../LICENSE"
+repository = "https://github.com/ByteVeda/reclink"
+homepage = "https://docs.byteveda.org/reclink/"
 
 [lib]
 name = "_core"

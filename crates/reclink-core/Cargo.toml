@@ -3,7 +3,9 @@ name = "reclink-core"
 version = "0.1.0"
 edition = "2021"
 description = "Pure Rust library for fuzzy string matching and record linkage"
-license = "MIT"
+license = "Apache-2.0"
+repository = "https://github.com/ByteVeda/reclink"
+homepage = "https://docs.byteveda.org/reclink/"
 
 [dependencies]
 rayon = { version = "1.11", optional = true }
