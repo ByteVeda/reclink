@@ -9,6 +9,7 @@ description = "Blazing-fast fuzzy matching and record linkage library powered by
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{name = "ByteVeda"}]
 keywords = ["fuzzy-matching", "record-linkage", "string-similarity", "deduplication", "entity-resolution"]
 classifiers = [
