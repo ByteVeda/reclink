@@ -49,6 +49,7 @@ const config: Config = {
       'classic',
       {
         docs: {
+          routeBasePath: '/',
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/ByteVeda/reclink/tree/main/docs-site/',
         },
@@ -110,15 +111,15 @@ const config: Config = {
         {
           title: 'Docs',
           items: [
-            {label: 'Getting Started', to: '/docs/getting-started/installation'},
-            {label: 'API Reference', to: '/docs/api/string-metrics'},
-            {label: 'Guides', to: '/docs/guides/name-matching'},
+            {label: 'Getting Started', to: '/getting-started/installation'},
+            {label: 'API Reference', to: '/api/string-metrics'},
+            {label: 'Guides', to: '/guides/name-matching'},
           ],
         },
         {
           title: 'Tools',
           items: [
-            {label: 'Interactive Playground', to: '/docs/playground/'},
+            {label: 'Interactive Playground', to: '/playground/'},
             {label: 'PyPI', href: 'https://pypi.org/project/reclink/'},
           ],
         },

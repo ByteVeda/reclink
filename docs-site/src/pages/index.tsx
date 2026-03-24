@@ -49,17 +49,17 @@ function HomepageHeader(): ReactNode {
         <div className="cta-buttons">
           <Link
             className="button button--primary button--lg"
-            to="/docs/getting-started/quickstart">
+            to="/getting-started/quickstart">
             Get Started
           </Link>
           <Link
             className="button button--outline button--lg"
-            to="/docs/playground/string-metrics">
+            to="/playground/string-metrics">
             Try Playground
           </Link>
           <Link
             className="button button--outline button--lg"
-            to="/docs/api/string-metrics">
+            to="/api/string-metrics">
             API Reference
           </Link>
         </div>
