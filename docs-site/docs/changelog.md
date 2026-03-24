@@ -37,6 +37,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - Docs served at `docs.byteveda.org/reclink/` via org-level GitHub Pages
 - Removed `/docs` prefix from doc routes (redundant with `docs.` subdomain)
+- Updated crate dependencies: `unicode-normalization` 0.1.25, `ahash` 0.8.12, `thiserror` 2.0, `regex` 1.12, `memmap2` 0.9.10, `crossbeam-channel` 0.5.15, `wasm-bindgen` 0.2.114, `serde-wasm-bindgen` 0.6.5, `js-sys` 0.3.91
+- Apache-2.0 license consistent across all crates
 
 ## 0.1.0
 
