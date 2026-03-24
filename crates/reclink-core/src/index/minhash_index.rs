@@ -282,7 +282,7 @@ mod tests {
         assert_eq!(index.len(), 2);
 
         let results = index.query("hello world", 0.3);
-        assert!(results.len() >= 1);
+        assert!(!results.is_empty());
     }
 
     #[test]

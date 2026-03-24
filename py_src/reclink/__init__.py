@@ -4,7 +4,8 @@ Built on Rust via PyO3 for maximum performance.
 """
 
 import contextlib
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, overload
 
 from reclink import async_api as async_api
 from reclink import benchmark as benchmark
@@ -222,7 +223,21 @@ if TYPE_CHECKING:
     )
 
 
-def register_metric(name_or_func: object = None, func: object = None) -> object:
+_MetricFunc = Callable[[str, str], float]
+
+
+@overload
+def register_metric(name_or_func: str, func: _MetricFunc) -> _MetricFunc: ...
+@overload
+def register_metric(name_or_func: str) -> Callable[[_MetricFunc], _MetricFunc]: ...
+@overload
+def register_metric(name_or_func: _MetricFunc) -> _MetricFunc: ...
+
+
+def register_metric(
+    name_or_func: str | _MetricFunc | None = None,
+    func: _MetricFunc | None = None,
+) -> _MetricFunc | Callable[[_MetricFunc], _MetricFunc]:
     """Register a custom similarity metric.
 
     Supports three calling conventions:
@@ -251,13 +266,13 @@ def register_metric(name_or_func: object = None, func: object = None) -> object:
     if callable(name_or_func):
         # Bare decorator: @register_metric
         fn = name_or_func
-        _register_metric_raw(fn.__name__, fn)  # type: ignore[attr-defined]
+        _register_metric_raw(fn.__name__, fn)
         return fn
 
     # Decorator with name: @register_metric("name")
     name = str(name_or_func)
 
-    def _decorator(fn: object) -> object:
+    def _decorator(fn: _MetricFunc) -> _MetricFunc:
         _register_metric_raw(name, fn)
         return fn
 

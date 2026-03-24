@@ -27,18 +27,18 @@ jobs:
           components: rustfmt, clippy
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.8.2
+        uses: Swatinem/rust-cache@v2.9.1
 
       - name: Cargo fmt
         run: cargo fmt --all --check
 
       - name: Cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: pyproject.toml
 
       - name: Install Python dev deps
         run: uv sync --extra dev
@@ -50,7 +50,7 @@ jobs:
         run: uv run ruff format --check py_src/ tests/
 
       - name: Mypy
-        run: uv run mypy py_src/reclink/ --no-incremental
+        run: uv run mypy --python-executable $(uv run python -c "import sys; print(sys.executable)") py_src/reclink/ tests/python/ --no-incremental
 
   rust-test:
     runs-on: ubuntu-latest
@@ -61,7 +61,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.8.2
+        uses: Swatinem/rust-cache@v2.9.1
         with:
           save-if: false
 
@@ -96,14 +96,14 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.8.2
+        uses: Swatinem/rust-cache@v2.9.1
         with:
           save-if: ${{ matrix.os != 'ubuntu-latest' }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: pyproject.toml
 
       - name: Install dependencies
         run: uv sync --extra dev

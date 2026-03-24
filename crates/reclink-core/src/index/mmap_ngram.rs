@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn invalid_magic_rejected() {
         let path = test_path("test_bad_magic.rngi");
-        std::fs::write(&path, &[0u8; 24]).unwrap();
+        std::fs::write(&path, [0u8; 24]).unwrap();
 
         let result = MmapNgramIndex::open(&path);
         assert!(result.is_err());
