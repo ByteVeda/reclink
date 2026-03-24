@@ -242,7 +242,7 @@ levenshtein_align("Jon", "John")
 - **Preprocess first, always.** Even `fold_case` alone can significantly improve scores.
 - **Use phonetic blocking in pipelines.** Soundex blocking on last name is the highest-leverage optimization for person-name dedup.
 - **Combine metrics.** No single metric handles all name variations. The `name_matching` preset is a strong default.
-- **Threshold tuning matters.** Start at 0.85 and lower the threshold if you need higher recall, or raise it if you need higher precision. Use the [evaluation API](/docs/api/evaluation) to measure.
+- **Threshold tuning matters.** Start at 0.85 and lower the threshold if you need higher recall, or raise it if you need higher precision. Use the [evaluation API](/api/evaluation) to measure.
 - **Handle transliterations explicitly.** For multilingual datasets, preprocess with `transliterate_cyrillic`, `transliterate_arabic`, etc. before matching. See the [Multilingual Guide](./multilingual) for details.
 
 ## Next steps
@@ -250,5 +250,5 @@ levenshtein_align("Jon", "John")
 - **[Dataset Deduplication](./deduplication)** -- Full pipeline walkthrough for deduplicating a dataset
 - **[Multilingual Support](./multilingual)** -- Handling non-Latin scripts and transliteration
 - **[Performance Optimization](./performance)** -- Scaling name matching to millions of records
-- **[String Metrics API](/docs/api/string-metrics)** -- Complete metric reference
-- **[Pipeline API](/docs/api/pipeline)** -- All pipeline builder methods
+- **[String Metrics API](/api/string-metrics)** -- Complete metric reference
+- **[Pipeline API](/api/pipeline)** -- All pipeline builder methods
