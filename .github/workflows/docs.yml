@@ -7,6 +7,12 @@ on:
       - "docs-site/**"
       - "crates/reclink-wasm/**"
       - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "docs-site/**"
+      - "crates/reclink-wasm/**"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,8 +21,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: pages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -56,6 +62,7 @@ jobs:
           path: docs-site/build
 
   deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: build
     runs-on: ubuntu-latest
     environment:
