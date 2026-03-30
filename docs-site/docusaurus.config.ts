@@ -19,6 +19,8 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  clientModules: ['./src/wasmPreloader.ts'],
+
   markdown: {
     mermaid: true,
     hooks: {
