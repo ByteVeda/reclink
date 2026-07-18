@@ -45,7 +45,7 @@ jobs:
         run: wasm-pack build crates/reclink-wasm --target web --release --out-dir ../../docs-site/static/wasm
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
