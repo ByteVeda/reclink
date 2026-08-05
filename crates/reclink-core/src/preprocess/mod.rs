@@ -1,0 +1,148 @@
+//! Text preprocessing and normalization utilities.
+//!
+//! Provides Unicode normalization, case folding, whitespace normalization,
+//! punctuation stripping, tokenization, and name standardization.
+
+pub mod custom;
+pub mod custom_tokenizer;
+mod normalize;
+pub mod stop_words;
+pub mod tokenize;
+pub mod transliterate;
+
+pub use normalize::{
+    clean_address, clean_company, clean_name, expand_abbreviations, fold_case, fold_case_locale,
+    locale_aware_compare, normalize_arabic, normalize_email, normalize_unicode, normalize_url,
+    normalize_whitespace, regex_replace, remove_stop_words, standardize_name,
+    strip_arabic_diacritics, strip_bidi_marks, strip_diacritics, strip_hebrew_diacritics,
+    strip_punctuation, CaseFoldLocale, NormalizationForm,
+};
+pub use tokenize::{
+    character_tokenize, cjk_ngram_tokenize, is_cjk, ngram_tokenize, smart_tokenize,
+    smart_tokenize_ngram, tokenize_with_custom, whitespace_tokenize,
+};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
+use crate::error::Result;
+
+/// A composable preprocessing operation.
+#[derive(Debug, Clone)]
+pub enum PreprocessOp {
+    /// Fold to lowercase.
+    FoldCase,
+    /// Trim + collapse whitespace.
+    NormalizeWhitespace,
+    /// Strip ASCII punctuation.
+    StripPunctuation,
+    /// Expand common name abbreviations.
+    StandardizeName,
+    /// Apply Unicode normalization.
+    NormalizeUnicode(NormalizationForm),
+    /// Remove common English stop words.
+    RemoveStopWords,
+    /// Expand common abbreviations (address + company).
+    ExpandAbbreviations,
+    /// Strip accents and diacritics.
+    StripDiacritics,
+    /// Apply a regex substitution.
+    RegexReplace {
+        pattern: String,
+        replacement: String,
+    },
+    /// Clean a person name (remove titles, suffixes, comma-reorder).
+    CleanName,
+    /// Clean an address (expand street types, directionals, units).
+    CleanAddress,
+    /// Clean a company name (remove legal suffixes, replace symbols).
+    CleanCompany,
+    /// Normalize an email address (Gmail dot/plus handling, lowercase).
+    NormalizeEmail,
+    /// Normalize a URL (remove default ports, www, sort query params).
+    NormalizeUrl,
+    /// Expand synonyms using a user-supplied lookup table.
+    SynonymExpand {
+        table: ahash::AHashMap<String, String>,
+    },
+    /// Transliterate from a non-Latin script to Latin characters.
+    Transliterate(transliterate::Script),
+    /// Strip Arabic diacritics (harakat, tatweel, superscript alef).
+    StripArabicDiacritics,
+    /// Strip Hebrew diacritics (niqqud, cantillation marks).
+    StripHebrewDiacritics,
+    /// Normalize Arabic text (alef variants, teh marbuta).
+    NormalizeArabic,
+    /// Strip Unicode bidirectional control marks.
+    StripBidiMarks,
+    /// CJK character n-gram tokenization (join result with spaces).
+    CjkNgramTokenize {
+        /// N-gram size.
+        n: usize,
+    },
+    /// Locale-aware case folding.
+    FoldCaseLocale(CaseFoldLocale),
+    /// User-defined custom preprocessing operation.
+    Custom {
+        /// Name of the registered custom preprocessor.
+        name: String,
+    },
+}
+
+/// Applies a sequence of preprocessing operations to a string.
+///
+/// # Errors
+///
+/// Returns an error if a regex operation has an invalid pattern.
+pub fn apply_ops(s: &str, ops: &[PreprocessOp]) -> Result<String> {
+    let mut result = s.to_string();
+    for op in ops {
+        result = match op {
+            PreprocessOp::FoldCase => fold_case(&result),
+            PreprocessOp::NormalizeWhitespace => normalize_whitespace(&result),
+            PreprocessOp::StripPunctuation => strip_punctuation(&result),
+            PreprocessOp::StandardizeName => standardize_name(&result),
+            PreprocessOp::NormalizeUnicode(form) => normalize_unicode(&result, *form),
+            PreprocessOp::RemoveStopWords => {
+                remove_stop_words(&result, &stop_words::default_english_stop_words())
+            }
+            PreprocessOp::ExpandAbbreviations => {
+                expand_abbreviations(&result, &stop_words::default_abbreviations())
+            }
+            PreprocessOp::StripDiacritics => strip_diacritics(&result),
+            PreprocessOp::RegexReplace {
+                pattern,
+                replacement,
+            } => regex_replace(&result, pattern, replacement)?,
+            PreprocessOp::CleanName => clean_name(&result),
+            PreprocessOp::CleanAddress => clean_address(&result),
+            PreprocessOp::CleanCompany => clean_company(&result),
+            PreprocessOp::NormalizeEmail => normalize_email(&result),
+            PreprocessOp::NormalizeUrl => normalize_url(&result),
+            PreprocessOp::SynonymExpand { table } => expand_abbreviations(&result, table),
+            PreprocessOp::StripArabicDiacritics => strip_arabic_diacritics(&result),
+            PreprocessOp::StripHebrewDiacritics => strip_hebrew_diacritics(&result),
+            PreprocessOp::NormalizeArabic => normalize_arabic(&result),
+            PreprocessOp::StripBidiMarks => strip_bidi_marks(&result),
+            PreprocessOp::Transliterate(script) => transliterate::transliterate(&result, *script),
+            PreprocessOp::CjkNgramTokenize { n } => cjk_ngram_tokenize(&result, *n).join(" "),
+            PreprocessOp::FoldCaseLocale(locale) => fold_case_locale(&result, *locale),
+            PreprocessOp::Custom { name } => custom::apply_custom_preprocessor(name, &result)?,
+        };
+    }
+    Ok(result)
+}
+
+/// Applies preprocessing operations to a batch of strings in parallel.
+///
+/// # Errors
+///
+/// Returns an error if any regex operation has an invalid pattern.
+pub fn preprocess_batch(strings: &[String], ops: &[PreprocessOp]) -> Result<Vec<String>> {
+    #[cfg(feature = "parallel")]
+    let iter = strings.par_iter();
+    #[cfg(not(feature = "parallel"))]
+    let iter = strings.iter();
+
+    iter.map(|s| apply_ops(s, ops)).collect()
+}

@@ -1,0 +1,76 @@
+---
+sidebar_position: 1
+title: Installation
+description: Install reclink via pip or build from source.
+---
+
+# Installation
+
+## From PyPI
+
+```bash
+pip install reclink
+```
+
+reclink requires **Python 3.12+** and ships pre-built wheels for Linux, macOS, and Windows.
+
+## Optional dependencies
+
+```bash
+# For pandas integration
+pip install reclink[pandas]
+
+# For polars integration
+pip install reclink[polars]
+
+# All optional extras
+pip install reclink[all]
+```
+
+## Build from source
+
+Building from source requires a Rust toolchain (1.70+) and Python 3.12+.
+
+```bash
+git clone https://github.com/pratyush618/reclink.git
+cd reclink
+
+# Using uv (recommended)
+uv sync --extra dev
+maturin develop --release
+
+# Or using pip
+pip install maturin
+maturin develop --release
+```
+
+## Verify installation
+
+```python
+import reclink
+
+reclink.jaro_winkler("hello", "hallo")
+# 0.88
+```
+
+If this returns a float without errors, you're all set.
+
+## Development setup
+
+For contributors:
+
+```bash
+git clone https://github.com/pratyush618/reclink.git
+cd reclink
+uv sync --extra dev
+maturin develop --release
+
+# Run tests
+cargo test --workspace           # Rust tests
+uv run pytest tests/python/ -v   # Python tests
+
+# Lint
+cargo clippy -- -D warnings
+uv run ruff check py_src/ tests/
+uv run mypy py_src/reclink/
+```

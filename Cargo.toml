@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/reclink-core", "crates/reclink-py", "crates/reclink-wasm"]
+resolver = "2"

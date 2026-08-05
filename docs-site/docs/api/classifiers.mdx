@@ -1,0 +1,148 @@
+---
+sidebar_position: 9
+title: Classifiers
+description: Reference for all match classifiers including threshold, probabilistic, and ML-based.
+---
+
+# Classifiers
+
+Classifiers determine whether a comparison vector represents a match, non-match, or possible match. They operate on the similarity scores produced by field comparators.
+
+```python
+from reclink.pipeline import ReclinkPipeline
+
+pipeline = (
+    ReclinkPipeline.builder()
+    .block_exact("last_name")
+    .compare_string("first_name", metric="jaro_winkler")
+    .classify_threshold(0.85)
+    .build()
+)
+```
+
+---
+
+## Available Classifiers
+
+| Classifier | Type | Parameters | Best for |
+|-----------|------|------------|----------|
+| **Threshold** | Rule-based | `threshold` | Simple cutoff |
+| **Threshold Bands** | Rule-based | `upper`, `lower` | Triage (match/possible/non-match) |
+| **Weighted Sum** | Rule-based | `weights`, `threshold` | Per-field importance |
+| **Weighted Sum Bands** | Rule-based | `weights`, `upper`, `lower` | Weighted triage |
+| **Fellegi-Sunter** | Probabilistic | `m_probs`, `u_probs` | Statistical record linkage |
+| **EM** | Probabilistic | `max_iterations` | Unsupervised F-S estimation |
+| **Logistic Regression** | ML | `training data` | Supervised matching |
+| **Decision Tree** | ML | `training data` | Interpretable ML |
+
+---
+
+## Threshold Classifier
+
+Classifies pairs based on whether the average comparison score exceeds a threshold.
+
+```python
+pipeline = ReclinkPipeline.builder().classify_threshold(0.85)
+```
+
+Pairs with `avg_score >= 0.85` are classified as **Match**, otherwise **NonMatch**.
+
+## Threshold Bands Classifier
+
+Three-band classification: Match, Possible, or NonMatch.
+
+```python
+pipeline = ReclinkPipeline.builder().classify_threshold_bands(upper=0.85, lower=0.6)
+```
+
+- `avg_score >= 0.85` → **Match**
+- `0.6 <= avg_score < 0.85` → **Possible** (needs manual review)
+- `avg_score < 0.6` → **NonMatch**
+
+## Weighted Sum Classifier
+
+Assigns different weights to different comparison fields.
+
+```python
+pipeline = ReclinkPipeline.builder().classify_weighted(
+    weights=[0.4, 0.3, 0.3],
+    threshold=0.8
+)
+```
+
+## Fellegi-Sunter Classifier
+
+Probabilistic classifier based on the Fellegi-Sunter model of record linkage.
+
+```python
+pipeline = ReclinkPipeline.builder().classify_fellegi_sunter(
+    m_probs=[0.95, 0.9],
+    u_probs=[0.1, 0.05]
+)
+```
+
+## EM Classifier
+
+Estimates Fellegi-Sunter parameters automatically using Expectation-Maximization.
+
+```python
+pipeline = ReclinkPipeline.builder().classify_em(max_iterations=100)
+```
+
+---
+
+## ML Classifiers
+
+### Logistic Regression
+
+Learns per-field weights from labeled training data using gradient descent with L2 regularization.
+
+```python
+from reclink import train_logistic_regression
+
+# Training data: comparison vectors + labels
+vectors = [[0.9, 0.95], [0.85, 0.9], [0.1, 0.15], [0.2, 0.1]]
+labels = [True, True, False, False]
+
+weights, bias, threshold = train_logistic_regression(
+    vectors, labels,
+    learning_rate=0.1,
+    max_iterations=1000,
+    regularization=0.01,
+)
+# Use weights/bias/threshold in pipeline configuration
+```
+
+### Decision Tree
+
+CART-style binary decision tree that splits on comparison fields to maximize Gini impurity reduction.
+
+```python
+from reclink import train_decision_tree
+
+tree_json = train_decision_tree(
+    vectors, labels,
+    max_depth=5,
+    min_samples_leaf=5,
+)
+# Returns JSON representation of the trained tree
+```
+
+---
+
+## Threshold Optimization
+
+Automatically find the optimal threshold for any classifier:
+
+```python
+from reclink import optimize_threshold
+
+scores = [0.9, 0.8, 0.7, 0.3, 0.2, 0.1]
+labels = [True, True, True, False, False, False]
+
+result = optimize_threshold(scores, labels, criterion="f1")
+print(f"Optimal threshold: {result.threshold}")
+print(f"F1: {result.f1}, Precision: {result.precision}, Recall: {result.recall}")
+```
+
+Supported criteria: `"f1"`, `"precision"`, `"recall"`.

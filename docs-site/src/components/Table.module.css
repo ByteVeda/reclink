@@ -1,0 +1,36 @@
+.wrapper {
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.table th {
+  background: var(--ifm-table-head-background);
+  color: var(--ifm-table-head-color);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid var(--ifm-table-border-color);
+}
+
+.table td {
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--ifm-table-border-color);
+  vertical-align: top;
+}
+
+.table tbody tr:hover {
+  background: var(--ifm-table-stripe-background);
+}
+
+.table code {
+  font-size: 0.875em;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background: var(--ifm-code-background);
+}

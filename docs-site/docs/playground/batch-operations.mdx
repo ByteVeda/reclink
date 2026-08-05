@@ -1,0 +1,17 @@
+---
+title: Batch Operations
+description: Match strings in batch and compute similarity matrices
+---
+
+import BrowserOnly from '@docusaurus/BrowserOnly';
+
+# Batch Operations
+
+Find best matches from a list of candidates or compute all-pairs similarity matrices with a heatmap visualization.
+
+<BrowserOnly>
+  {() => {
+    const BatchOperations = require('@site/src/components/playground/BatchOperations').default;
+    return <BatchOperations />;
+  }}
+</BrowserOnly>

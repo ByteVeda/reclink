@@ -1,0 +1,33 @@
+[package]
+name = "reclink-core"
+version = "0.1.1"
+edition = "2021"
+description = "Pure Rust library for fuzzy string matching and record linkage"
+license = "Apache-2.0"
+repository = "https://github.com/ByteVeda/reclink"
+homepage = "https://docs.byteveda.org/reclink/"
+
+[dependencies]
+rayon = { version = "1.11", optional = true }
+unicode-normalization = "0.1.25"
+ahash = { version = "0.8.12", features = ["serde"] }
+thiserror = "2.0"
+regex = "1.12"
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1"
+
+memmap2 = { version = "0.9.10", optional = true }
+crossbeam-channel = { version = "0.5.15", optional = true }
+
+[features]
+default = ["parallel"]
+parallel = ["dep:rayon"]
+mmap = ["dep:memmap2"]
+streaming-backpressure = ["dep:crossbeam-channel"]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "metrics"
+harness = false

@@ -1,0 +1,17 @@
+---
+title: String Metrics
+description: Compare strings with 21 similarity and distance metrics
+---
+
+import BrowserOnly from '@docusaurus/BrowserOnly';
+
+# String Metrics
+
+Compare two strings using any of 21 similarity and distance metrics. All computation runs in your browser via WebAssembly.
+
+<BrowserOnly>
+  {() => {
+    const StringMetrics = require('@site/src/components/playground/StringMetrics').default;
+    return <StringMetrics />;
+  }}
+</BrowserOnly>

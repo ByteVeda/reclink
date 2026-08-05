@@ -1,0 +1,83 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs-site/**"
+      - "crates/reclink-wasm/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "docs-site/**"
+      - "crates/reclink-wasm/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.1
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM
+        run: wasm-pack build crates/reclink-wasm --target web --release --out-dir ../../docs-site/static/wasm
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        run: cd docs-site && npm ci
+
+      - name: Build Docusaurus
+        run: cd docs-site && npm run build
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs-site/build
+
+      # Mirrored into docs.byteveda.org/<slug>/ by ByteVeda/byteveda.site.
+      # upload-pages-artifact keeps its artifact for 1 day, too short for the
+      # portal's next build to fetch, so publish a longer-lived copy.
+      - name: Upload docs for the portal mirror
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-dist
+          path: docs-site/build
+          retention-days: 90
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
