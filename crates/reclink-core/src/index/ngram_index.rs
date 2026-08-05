@@ -4,6 +4,8 @@
 //! At query time, counts how many n-grams the query shares with each candidate
 //! and returns those above a threshold.
 
+use std::cmp::Reverse;
+
 use ahash::{AHashMap, AHashSet};
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +70,7 @@ impl NgramIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.shared_ngrams.cmp(&a.shared_ngrams));
+        results.sort_by_key(|r| Reverse(r.shared_ngrams));
         results
     }
 
@@ -87,7 +89,7 @@ impl NgramIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.shared_ngrams.cmp(&a.shared_ngrams));
+        results.sort_by_key(|r| Reverse(r.shared_ngrams));
         results.truncate(k);
         results
     }

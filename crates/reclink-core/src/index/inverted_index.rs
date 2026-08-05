@@ -3,6 +3,8 @@
 //! Maps tokens to record indices for fast lookup of records sharing
 //! common tokens with a query string.
 
+use std::cmp::Reverse;
+
 use ahash::AHashMap;
 
 /// Tokenization strategy for the inverted index.
@@ -78,7 +80,7 @@ impl InvertedIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.shared_tokens.cmp(&a.shared_tokens));
+        results.sort_by_key(|r| Reverse(r.shared_tokens));
         results
     }
 
