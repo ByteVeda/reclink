@@ -26,6 +26,7 @@
 //!     bytes: [u8; len]
 //! ```
 
+use std::cmp::Reverse;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -80,7 +81,7 @@ impl MmapNgramIndex {
         write_u32(&mut file, inverted.len() as u32)?;
         // Sort keys for deterministic output
         let mut entries: Vec<_> = inverted.iter().collect();
-        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        entries.sort_by_key(|(ngram, _)| *ngram);
 
         for (ngram, indices) in &entries {
             let bytes = ngram.as_bytes();
@@ -252,7 +253,7 @@ impl MmapNgramIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.shared_ngrams.cmp(&a.shared_ngrams));
+        results.sort_by_key(|r| Reverse(r.shared_ngrams));
         results
     }
 
@@ -272,7 +273,7 @@ impl MmapNgramIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.shared_ngrams.cmp(&a.shared_ngrams));
+        results.sort_by_key(|r| Reverse(r.shared_ngrams));
         results.truncate(k);
         results
     }
