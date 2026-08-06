@@ -54,7 +54,6 @@ dev = [
 reclink = "reclink.cli:main"
 
 [tool.maturin]
-python-source = "py_src"
 module-name = "reclink._core"
 manifest-path = "crates/reclink-py/Cargo.toml"
 features = ["pyo3/extension-module"]

@@ -127,9 +127,9 @@ cargo fmt --check
 
 # Python
 uv run pytest tests/python/ -v
-uv run ruff check py_src/ tests/
-uv run ruff format --check py_src/ tests/
-uv run mypy py_src/reclink/
+uv run ruff check reclink/ tests/
+uv run ruff format --check reclink/ tests/
+uv run mypy reclink/
 ```
 
 ## License

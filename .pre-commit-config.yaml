@@ -31,7 +31,7 @@ repos:
 
       - id: mypy
         name: mypy
-        entry: bash -c 'uv run mypy --python-executable $(uv run python -c "import sys; print(sys.executable)") py_src/reclink/ tests/python/'
+        entry: bash -c 'uv run mypy --python-executable $(uv run python -c "import sys; print(sys.executable)") reclink/ tests/python/'
         language: system
         types: [python]
         pass_filenames: false
