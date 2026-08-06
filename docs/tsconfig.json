@@ -1,12 +1,22 @@
 {
   // This file is not used in compilation. It is here just for a nice editor experience.
-  "extends": "@docusaurus/tsconfig",
-  // "baseUrl" re-roots @docusaurus/tsconfig's "@site/*" mapping onto this
-  // directory, so it has to stay. TypeScript 6.0.3 reports it as a hard error
-  // and 3.10.2's @docusaurus/tsconfig still sets it too, so silence it here.
+  // Deliberately not extending @docusaurus/tsconfig: it still sets "baseUrl", which
+  // TypeScript 7 removed, so extending it fails with TS5102 and no local override can
+  // suppress it. Its compilerOptions are inlined below, with "paths" resolved relative
+  // to this file instead. Re-extend once Docusaurus ships a baseUrl-free tsconfig.
   "compilerOptions": {
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0"
+    "allowJs": true,
+    "esModuleInterop": true,
+    "jsx": "preserve",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "noEmit": true,
+    "paths": {
+      "@site/*": ["./*"]
+    },
+    "skipLibCheck": true
   },
   "exclude": [".docusaurus", "build"]
 }
