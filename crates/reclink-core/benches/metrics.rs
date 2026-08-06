@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use reclink_core::metrics::damerau_levenshtein::{
     damerau_levenshtein_distance, damerau_levenshtein_distance_threshold,
 };
@@ -12,6 +12,7 @@ use reclink_core::metrics::{
     LongestCommonSubstring, NgramSimilarity, PartialRatio, PhoneticHybrid, SimilarityMetric,
     SmithWaterman, SorensenDice, TokenSet, TokenSort, WeightedLevenshtein,
 };
+use std::hint::black_box;
 
 /// Generate a pair of strings of given length with `num_changes` substitutions.
 fn make_pair(len: usize, num_changes: usize) -> (String, String) {
