@@ -6,7 +6,7 @@ on:
   push:
     branches: [master]
     paths:
-      - "docs-site/**"
+      - "docs/**"
       - "crates/**"
       - ".github/actions/setup-node/**"
       - ".github/actions/setup-rust/**"
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
@@ -45,9 +45,9 @@ jobs:
       - name: Build docs site
         uses: ./.github/actions/build-docs
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
-          path: docs-site/build
+          path: docs/build
 
       # Mirrored into docs.byteveda.org/<slug>/ by ByteVeda/byteveda.site.
       # upload-pages-artifact keeps its artifact for 1 day, too short for the
@@ -56,7 +56,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: docs-dist
-          path: docs-site/build
+          path: docs/build
           retention-days: 90
 
   deploy:

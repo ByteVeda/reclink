@@ -2,7 +2,7 @@ name: CI Docs
 
 # Reusable workflow: builds the docs site (WASM bundle included) as a PR check.
 # Called by ci.yml when docs-relevant paths change, so a Rust- or Python-only
-# PR never pays for an npm install. Deploying is docs.yml's job.
+# PR never pays for a pnpm install. Deploying is docs.yml's job.
 on:
   workflow_call:
 

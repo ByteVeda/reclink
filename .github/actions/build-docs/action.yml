@@ -9,12 +9,12 @@ inputs:
   working-directory:
     description: "Docs site directory."
     required: false
-    default: docs-site
+    default: docs
   wasm-out-dir:
     description: >-
       wasm-pack `--out-dir`, resolved relative to crates/reclink-wasm.
     required: false
-    default: ../../docs-site/static/wasm
+    default: ../../docs/static/wasm
 
 runs:
   using: composite
@@ -32,4 +32,4 @@ runs:
     - name: Build Docusaurus
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: npm run build
+      run: pnpm build
