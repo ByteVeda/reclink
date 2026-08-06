@@ -59,16 +59,8 @@ pub fn metaphone(s: &str) -> String {
         }
 
         match c {
-            'A' | 'E' | 'I' | 'O' | 'U' => {
-                if i == 0 {
-                    result.push(c);
-                }
-            }
-            'B' => {
-                if !(i > 0 && chars[i - 1] == 'M') || i + 1 >= len {
-                    result.push('B');
-                }
-            }
+            'A' | 'E' | 'I' | 'O' | 'U' if i == 0 => result.push(c),
+            'B' if !(i > 0 && chars[i - 1] == 'M') || i + 1 >= len => result.push('B'),
             'C' => {
                 if at(i + 1) == 'I' && at(i + 2) == 'A' {
                     result.push('X');
@@ -105,17 +97,9 @@ pub fn metaphone(s: &str) -> String {
                     }
                 }
             }
-            'H' => {
-                if is_vowel(at(i + 1)) && (i == 0 || !is_vowel(chars[i - 1])) {
-                    result.push('H');
-                }
-            }
+            'H' if is_vowel(at(i + 1)) && (i == 0 || !is_vowel(chars[i - 1])) => result.push('H'),
             'J' => result.push('J'),
-            'K' => {
-                if i == 0 || chars[i - 1] != 'C' {
-                    result.push('K');
-                }
-            }
+            'K' if i == 0 || chars[i - 1] != 'C' => result.push('K'),
             'L' => result.push('L'),
             'M' => result.push('M'),
             'N' => result.push('N'),
@@ -148,16 +132,15 @@ pub fn metaphone(s: &str) -> String {
                 }
             }
             'V' => result.push('F'),
-            'W' | 'Y' => {
-                if is_vowel(at(i + 1)) {
-                    result.push(c);
-                }
-            }
+            'W' | 'Y' if is_vowel(at(i + 1)) => result.push(c),
             'X' => {
                 result.push('K');
                 result.push('S');
             }
             'Z' => result.push('S'),
+            // Also absorbs the guarded arms above whose guard did not hold:
+            // every arm matches a distinct letter, so a failed guard can only
+            // fall through to here, and emitting nothing is the intent.
             _ => {}
         }
 
