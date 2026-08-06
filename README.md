@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ByteVeda/reclink/master/docs-site/static/img/icon.png" alt="reclink" width="120" height="120">
+<img src="https://github.com/user-attachments/assets/a7bed95e-99f1-4932-bcaa-b71b48fd6f40" alt="reclink" width="120" height="120"/>
 </p>
 
 <h1 align="center">reclink</h1>
