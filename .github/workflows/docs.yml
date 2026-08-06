@@ -1,17 +1,16 @@
 name: Deploy Docs
 
+# Deploy only. Building the site as a PR check is ci-docs.yml's job, so a PR
+# no longer builds the docs twice.
 on:
   push:
     branches: [master]
     paths:
-      - "docs/**"
-      - "crates/reclink-wasm/**"
-      - ".github/workflows/docs.yml"
-  pull_request:
-    branches: [master]
-    paths:
-      - "docs/**"
-      - "crates/reclink-wasm/**"
+      - "docs-site/**"
+      - "crates/**"
+      - ".github/actions/setup-node/**"
+      - ".github/actions/setup-rust/**"
+      - ".github/actions/build-docs/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -20,51 +19,35 @@ permissions:
   pages: write
   id-token: write
 
+# Deploys are not cancelled mid-flight: a half-replaced Pages site is worse
+# than a slightly stale one.
 concurrency:
-  group: pages-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
         with:
           targets: wasm32-unknown-unknown
+          # Reader: ci-docs.yml owns the wasm cache namespace.
+          shared-key: wasm
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.1
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build docs site
+        uses: ./.github/actions/build-docs
 
-      - name: Build WASM
-        run: wasm-pack build crates/reclink-wasm --target web --release --out-dir ../../docs/static/wasm
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
+      - uses: actions/upload-pages-artifact@v4
         with:
-          package_json_file: docs/package.json
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: cd docs && pnpm install --frozen-lockfile
-
-      - name: Build Docusaurus
-        run: cd docs && pnpm build
-
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: docs/build
+          path: docs-site/build
 
       # Mirrored into docs.byteveda.org/<slug>/ by ByteVeda/byteveda.site.
       # upload-pages-artifact keeps its artifact for 1 day, too short for the
@@ -73,13 +56,15 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: docs-dist
-          path: docs/build
+          path: docs-site/build
           retention-days: 90
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # workflow_dispatch can be aimed at any branch; only master gets published.
+    if: github.ref == 'refs/heads/master'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
