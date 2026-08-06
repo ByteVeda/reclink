@@ -2,17 +2,47 @@ import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
+const baseUrl = '/reclink/';
+
 const config: Config = {
   title: 'reclink',
   tagline: 'Blazing-fast fuzzy matching and record linkage, powered by Rust',
-  favicon: 'img/favicon_io/favicon.ico',
+  favicon: 'img/favicon.ico',
 
   future: {
     v4: true,
   },
 
   url: 'https://docs.byteveda.org',
-  baseUrl: '/reclink/',
+  baseUrl,
+
+  // Docusaurus does not prefix headTags hrefs with baseUrl, so do it here.
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '96x96',
+        href: `${baseUrl}img/favicon-96x96.png`,
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'apple-touch-icon',
+        sizes: '180x180',
+        href: `${baseUrl}img/apple-touch-icon.png`,
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'manifest',
+        href: `${baseUrl}site.webmanifest`,
+      },
+    },
+  ],
 
   organizationName: 'ByteVeda',
   projectName: 'reclink',
@@ -64,7 +94,7 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/reclink-logo.png',
+    image: 'img/social-card.png',
     colorMode: {
       defaultMode: 'dark',
       respectPrefersColorScheme: true,
@@ -73,7 +103,7 @@ const config: Config = {
       title: 'reclink',
       logo: {
         alt: 'reclink logo',
-        src: 'img/icon.png',
+        src: 'img/logo.png',
       },
       items: [
         {
