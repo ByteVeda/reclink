@@ -1,0 +1,37 @@
+name: CI Release readiness
+
+# Reusable workflow: everything that has to hold before a tag can be released,
+# checked on PRs so it is never discovered at release time. The package lives
+# at the checkout root, so a packaging mistake shows up as an sdist that
+# installs but cannot import.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    name: Release readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          # The sdist is compiled into its own throwaway environment, so the
+          # dev extra would only be dead weight here.
+          sync: "false"
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - uses: ./.github/actions/verify-sdist

@@ -1,0 +1,43 @@
+name: Set up Node
+description: >-
+  Installs pnpm and Node.js with pnpm caching and, by default, installs the
+  docs site's dependencies. Only the docs jobs need this, so no Rust- or
+  Python-only job pays for a pnpm install.
+
+inputs:
+  working-directory:
+    description: "Directory whose dependencies to install and cache."
+    required: false
+    default: docs
+  node-version:
+    description: "Node.js major version to install."
+    required: false
+    default: "22"
+  install:
+    description: "Run `pnpm install --frozen-lockfile` in working-directory."
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Must precede setup-node: `cache: pnpm` resolves the store path by running
+    # pnpm, so the binary has to exist first. The version comes from the docs
+    # site's `packageManager` field rather than being pinned a second time here.
+    - name: Install pnpm
+      uses: pnpm/action-setup@v6
+      with:
+        package_json_file: ${{ inputs.working-directory }}/package.json
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+
+    - name: Install docs dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: pnpm install --frozen-lockfile

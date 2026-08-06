@@ -71,6 +71,6 @@ uv run pytest tests/python/ -v   # Python tests
 
 # Lint
 cargo clippy -- -D warnings
-uv run ruff check py_src/ tests/
-uv run mypy py_src/reclink/
+uv run ruff check reclink/ tests/
+uv run mypy reclink/
 ```

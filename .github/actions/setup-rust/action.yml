@@ -1,0 +1,46 @@
+name: Set up Rust
+description: >-
+  Installs the stable Rust toolchain and restores the Cargo build cache with the
+  repo's standard settings. Used by every Rust-touching job so toolchain setup
+  lives in one place.
+
+inputs:
+  components:
+    description: "Comma-separated rustup components (e.g. 'rustfmt, clippy')."
+    required: false
+    default: ""
+  targets:
+    description: >-
+      Comma-separated extra rustup targets (e.g. 'wasm32-unknown-unknown' for
+      the docs site's WASM bundle).
+    required: false
+    default: ""
+  save-if:
+    description: >-
+      Whether this job may write the Cargo cache. Only one job per cache
+      namespace should — leave 'false' in readers so they restore without
+      minting a new entry per run.
+    required: false
+    default: "false"
+  shared-key:
+    description: >-
+      Optional rust-cache shared-key, giving a job its own cache namespace
+      instead of the per-job default. Use it to keep a release-profile target/
+      apart from the dev-profile one.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: ${{ inputs.components }}
+        targets: ${{ inputs.targets }}
+
+    - name: Restore Cargo cache
+      uses: Swatinem/rust-cache@v2.9.1
+      with:
+        save-if: ${{ inputs.save-if }}
+        shared-key: ${{ inputs.shared-key }}

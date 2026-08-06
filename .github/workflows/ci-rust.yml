@@ -1,0 +1,44 @@
+name: CI Rust
+
+# Reusable workflow: Rust formatting, clippy, and the workspace test suite.
+# Called by ci.yml when Rust-relevant paths change.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          components: rustfmt, clippy
+          # Sole writer of the dev-profile cache, and only from master so PRs
+          # never mint a cache entry each.
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+
+      - name: Cargo fmt
+        run: cargo fmt --all --check
+
+      - name: Cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Run Rust tests
+        run: cargo test --workspace

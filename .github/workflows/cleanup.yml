@@ -7,17 +7,17 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       actions: write
     steps:
-      - uses: actions/checkout@v7
-
       - name: Delete PR branch caches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           BRANCH: refs/pull/${{ github.event.pull_request.number }}/merge
         run: |
           echo "Deleting caches for branch: $BRANCH"
           gh cache list --ref "$BRANCH" --json id --jq '.[].id' |
-            xargs -I {} gh cache delete {} --repo "${{ github.repository }}" || true
+            xargs -r -I {} gh cache delete {} || true
           echo "Done"

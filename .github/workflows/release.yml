@@ -68,15 +68,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # maturin builds against both interpreters, so both have to be present.
+      # No dev extra: the wheel build has no use for it.
       - name: Set up Python 3.12
-        uses: actions/setup-python@v7
+        uses: ./.github/actions/setup-python
         with:
           python-version: "3.12"
+          sync: "false"
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v7
+        uses: ./.github/actions/setup-python
         with:
           python-version: "3.13"
+          sync: "false"
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -96,14 +100,16 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v7
+        uses: ./.github/actions/setup-python
         with:
           python-version: "3.12"
+          sync: "false"
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v7
+        uses: ./.github/actions/setup-python
         with:
           python-version: "3.13"
+          sync: "false"
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -127,6 +133,9 @@ jobs:
         with:
           command: sdist
           args: --out dist
+
+      # The sdist reaches PyPI without any job having compiled it otherwise.
+      - uses: ./.github/actions/verify-sdist
 
       - name: Upload sdist
         uses: actions/upload-artifact@v7
