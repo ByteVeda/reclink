@@ -18,12 +18,14 @@ runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v7
       with:
         python-version: ${{ inputs.python-version }}
 
+    # Exact tag, not a major: setup-uv stopped publishing major/minor tags
+    # after v7, so `@v9` does not resolve.
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@v9.0.0
       with:
         cache-dependency-glob: pyproject.toml
 
