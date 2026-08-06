@@ -1,0 +1,68 @@
+name: CI Python
+
+# Reusable workflow: Python linting and the cross-platform pytest matrix.
+# Called by ci.yml when Python-relevant paths change.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python + uv
+        uses: ./.github/actions/setup-python
+
+      - name: Ruff check
+        run: uv run ruff check reclink/ tests/
+
+      - name: Ruff format check
+        run: uv run ruff format --check reclink/ tests/
+
+      # --python-executable points mypy at the venv uv just synced, so the
+      # compiled _core stubs and the third-party stubs both resolve.
+      - name: Mypy
+        run: uv run mypy --python-executable "$(uv run python -c "import sys; print(sys.executable)")" reclink/ tests/python/ --no-incremental
+
+  test:
+    name: Tests (${{ matrix.os }} / Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # One platform failing should not hide the others; the native extension
+      # is where the platform-specific breakage lives.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python + uv
+        uses: ./.github/actions/setup-python
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          # Release-profile target/, kept in its own namespace so it does not
+          # evict the lint job's dev-profile cache. Master is the sole writer.
+          shared-key: release
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+
+      - name: Build native extension
+        uses: PyO3/maturin-action@v1
+        with:
+          command: develop
+          args: --release
+
+      - name: Run Python tests
+        run: uv run pytest tests/python/ -v

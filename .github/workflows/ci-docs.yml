@@ -1,0 +1,33 @@
+name: CI Docs
+
+# Reusable workflow: builds the docs site (WASM bundle included) as a PR check.
+# Called by ci.yml when docs-relevant paths change, so a Rust- or Python-only
+# PR never pays for an npm install. Deploying is docs.yml's job.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          targets: wasm32-unknown-unknown
+          # The wasm target gets its own namespace so it does not evict the
+          # host-target caches. Sole writer, and only from master.
+          shared-key: wasm
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+
+      - name: Build docs site
+        uses: ./.github/actions/build-docs
