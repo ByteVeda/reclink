@@ -44,18 +44,23 @@ jobs:
       - name: Build WASM
         run: wasm-pack build crates/reclink-wasm --target web --release --out-dir ../../docs/static/wasm
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: docs/package.json
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: cd docs && npm ci
+        run: cd docs && pnpm install --frozen-lockfile
 
       - name: Build Docusaurus
-        run: cd docs && npm run build
+        run: cd docs && pnpm build
 
       - uses: actions/upload-pages-artifact@v5
         with:

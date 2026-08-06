@@ -1,0 +1,6 @@
+# Docusaurus 3.9.x pulls webpackbar 6, which passes `name`/`color`/`reporters`
+# to webpack's ProgressPlugin. webpack 5.109 tightened that schema and the build
+# dies at startup. Docusaurus 3.10.2 moves to webpackbar 7 — drop this override
+# once the Docusaurus packages are bumped.
+overrides:
+  webpack: "<5.106.0"
