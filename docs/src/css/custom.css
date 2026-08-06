@@ -1,3 +1,9 @@
+/* Self-hosted IBM Plex Sans — latin subset, only the weights the site uses. */
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-sans/latin-700.css';
+
 :root {
   --ifm-color-primary: #e44d26;
   --ifm-color-primary-dark: #d04020;
@@ -7,7 +13,8 @@
   --ifm-color-primary-lighter: #ea6c3a;
   --ifm-color-primary-lightest: #ee8a5e;
   --ifm-code-font-size: 95%;
-  --ifm-font-family-base: system-ui, -apple-system, sans-serif;
+  --ifm-font-family-base: 'IBM Plex Sans', system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 

@@ -2,11 +2,11 @@
   // This file is not used in compilation. It is here just for a nice editor experience.
   "extends": "@docusaurus/tsconfig",
   // "baseUrl" re-roots @docusaurus/tsconfig's "@site/*" mapping onto this
-  // directory, so it has to stay. TypeScript 6 deprecates it and 3.10.2's
-  // @docusaurus/tsconfig still sets it too, so silence the warning here.
+  // directory, so it has to stay. TypeScript 6.0.3 reports it as a hard error
+  // and 3.10.2's @docusaurus/tsconfig still sets it too, so silence it here.
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0"
   },
   "exclude": [".docusaurus", "build"]
 }

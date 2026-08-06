@@ -1,0 +1,24 @@
+{
+  "name": "reclink",
+  "short_name": "reclink",
+  "description": "Blazing-fast fuzzy matching and record linkage, powered by Rust",
+  "start_url": "/reclink/",
+  "scope": "/reclink/",
+  "display": "standalone",
+  "background_color": "#1b1b1d",
+  "theme_color": "#e44d26",
+  "icons": [
+    {
+      "src": "/reclink/img/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/reclink/img/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
