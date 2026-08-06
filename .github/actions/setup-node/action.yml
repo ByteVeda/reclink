@@ -1,0 +1,35 @@
+name: Set up Node
+description: >-
+  Installs Node.js with npm caching and, by default, installs the docs site's
+  dependencies. Only the docs jobs need this, so no Rust- or Python-only job
+  pays for an npm install.
+
+inputs:
+  working-directory:
+    description: "Directory whose dependencies to install and cache."
+    required: false
+    default: docs-site
+  node-version:
+    description: "Node.js major version to install."
+    required: false
+    default: "22"
+  install:
+    description: "Run `npm ci` in working-directory."
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+    - name: Install docs dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm ci

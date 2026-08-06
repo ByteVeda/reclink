@@ -1,0 +1,35 @@
+name: Build docs site
+description: >-
+  Compiles the WASM bindings into the docs site's static assets, then builds
+  Docusaurus. Shared by the docs CI check and the Pages deploy so the two can
+  never build the site differently — the interactive playground silently falls
+  back if the WASM bundle is missing, which a docs-only build would not catch.
+
+inputs:
+  working-directory:
+    description: "Docs site directory."
+    required: false
+    default: docs-site
+  wasm-out-dir:
+    description: >-
+      wasm-pack `--out-dir`, resolved relative to crates/reclink-wasm.
+    required: false
+    default: ../../docs-site/static/wasm
+
+runs:
+  using: composite
+  steps:
+    - name: Install wasm-pack
+      shell: bash
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+    - name: Build WASM
+      shell: bash
+      env:
+        WASM_OUT_DIR: ${{ inputs.wasm-out-dir }}
+      run: wasm-pack build crates/reclink-wasm --target web --release --out-dir "$WASM_OUT_DIR"
+
+    - name: Build Docusaurus
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm run build

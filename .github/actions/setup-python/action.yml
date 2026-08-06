@@ -1,0 +1,33 @@
+name: Set up Python + uv
+description: >-
+  Installs Python and uv, and by default syncs the `dev` extra. Pass
+  `sync: false` for jobs that only need an interpreter — the wheel builds drive
+  maturin themselves and the sdist check builds its own throwaway environment.
+
+inputs:
+  python-version:
+    description: "Python version to install."
+    required: false
+    default: "3.12"
+  sync:
+    description: "Run `uv sync --extra dev`."
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        cache-dependency-glob: pyproject.toml
+
+    - name: Install Python dependencies
+      if: inputs.sync == 'true'
+      shell: bash
+      run: uv sync --extra dev
