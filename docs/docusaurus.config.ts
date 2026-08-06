@@ -53,7 +53,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/ByteVeda/reclink/tree/main/docs-site/',
+          editUrl: 'https://github.com/ByteVeda/reclink/tree/master/docs/',
         },
         blog: false,
         theme: {
