@@ -23,4 +23,4 @@ js-sys = "0.3.91"
 # so this requirement must track ahash's getrandom, not the latest release.
 # The matching `--cfg getrandom_backend="wasm_js"` lives in /.cargo/config.toml.
 [target.wasm32-unknown-unknown.dependencies]
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
