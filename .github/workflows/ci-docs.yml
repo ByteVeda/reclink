@@ -31,3 +31,10 @@ jobs:
 
       - name: Build docs site
         uses: ./.github/actions/build-docs
+
+      # Runs after build-docs so static/wasm/ exists — the playground's imports
+      # are unresolvable without it. Not in the composite: the Pages deploy has
+      # no use for it, and a type error should fail the PR check, not a deploy.
+      - name: Typecheck docs site
+        working-directory: docs
+        run: pnpm typecheck
