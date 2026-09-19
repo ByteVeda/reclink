@@ -22,7 +22,7 @@ runs:
         python-version: ${{ inputs.python-version }}
 
     # Exact tag: setup-uv no longer publishes major/minor tags.
-    - uses: astral-sh/setup-uv@v10.0.0
+    - uses: astral-sh/setup-uv@v10.1.0
 
     - name: Compile sdist in a clean environment
       shell: bash
